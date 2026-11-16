@@ -21,6 +21,7 @@ export function initUI(handlers) {
     if (e.code === 'KeyE') interact();
     if (/^Digit[1-4]$/.test(e.code)) selectTool(+e.code[5] - 1);
     if (e.code === 'KeyH') toggleHolster();
+    if (e.code === 'KeyP') import('./mpui.js').then(m => m.toggleMP());
     if (e.code === 'KeyX') H.faster(); if (e.code === 'KeyZ') H.slower();
     if (e.code === 'KeyR') H.reelIn();
     if (e.code === 'KeyV') setView(S.viewMode === 'fp' ? 'ext' : 'fp');

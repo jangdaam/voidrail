@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 const randomCode = () => Array.from(crypto.getRandomValues(new Uint8Array(4)), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
 let H;
 
+export const toggleMP = on => togglePanel(on);
 export function initMPUI(handlers, params) {
   H = handlers;
   let name = ''; try { name = localStorage.getItem('voidrail-name') || ''; } catch (e) {}
@@ -23,7 +24,8 @@ export function initMPUI(handlers, params) {
   };
   for (const id of ['mpName', 'mpCode']) $(id).addEventListener('keydown', e => e.stopPropagation());   // 입력 중 게임 단축키 막기
   // 링크로 들어왔으면 탑승 직후 자동 참가
-  if (params.get('room')) { const go = $('go'), prev = go.onclick; go.onclick = e => { prev?.(e); join(); }; }
+  // 링크(?room=)로 들어왔으면 바로 자동 참가 (WebRTC 연결은 클릭 없이도 가능)
+  if (params.get('room')) setTimeout(join, 300);
   setMPStatus('혼자 타는 중');
 }
 function togglePanel(on) {
