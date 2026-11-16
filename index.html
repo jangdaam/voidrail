@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voidrail</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0d0f1a;color:#f4efe6;font-family:"Trebuchet MS",ui-rounded,system-ui,sans-serif}
+  canvas{display:block;touch-action:none}
+  .pill{background:rgba(10,12,24,.45);backdrop-filter:blur(6px);padding:6px 12px;border-radius:999px;font-size:14px;font-weight:700}
+  #banner{position:fixed;left:0;right:0;top:11%;text-align:center;font-size:clamp(18px,3.2vw,40px);font-weight:700;letter-spacing:.18em;color:#fff;text-shadow:0 3px 0 rgba(0,0,0,.35),0 0 24px rgba(0,0,0,.25);opacity:0;transition:opacity 1.2s;pointer-events:none}
+  #banner.on{opacity:.95}
+  #toast{position:fixed;left:50%;top:22%;transform:translateX(-50%) translateY(-6px);opacity:0;transition:all .4s;pointer-events:none}
+  #toast.on{opacity:1;transform:translateX(-50%)}
+  #cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(0,0,0,.35);pointer-events:none;display:none}
+  #prompt{position:fixed;left:50%;top:58%;transform:translateX(-50%);font-size:15px;font-weight:700;text-shadow:0 2px 4px rgba(0,0,0,.6);pointer-events:none;white-space:nowrap}
+  #mode{position:fixed;left:16px;top:14px}
+  #inv{position:fixed;right:16px;top:14px;transition:background .2s}
+  #inv.flash{background:rgba(242,193,78,.9);color:#2a2320}
+  #floats{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+  .float{position:absolute;left:0;top:0;font-weight:800;font-size:16px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.4);white-space:nowrap}
+  #resume{position:fixed;left:50%;top:64%;transform:translateX(-50%);cursor:pointer}
+  #fade{position:fixed;inset:0;background:#0d0f1a;opacity:0;pointer-events:none;transition:opacity .35s;display:flex;align-items:center;justify-content:center;font-size:15px;letter-spacing:.2em}
+  #fade.on{opacity:1;pointer-events:auto}
+  #debug{position:fixed;left:16px;top:52px;white-space:pre;font:12px ui-monospace,monospace;background:rgba(0,0,0,.55);padding:6px 8px;border-radius:6px}
+  #start{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(8,10,22,.45);backdrop-filter:blur(3px);z-index:5}
+  #start .card{background:rgba(255,255,255,.94);color:#24212c;padding:22px 28px;border-radius:18px;max-width:430px;box-shadow:0 10px 0 rgba(0,0,0,.18)}
+  #start h1{margin:0 0 6px;font-size:22px}
+  #start p{margin:6px 0;font-size:14px;line-height:1.5}
+  #start table{font-size:14px;border-collapse:collapse;margin:8px 0}
+  #start td{padding:3px 10px 3px 0}
+  #start td:first-child{font-weight:800;white-space:nowrap}
+  #start .tip{opacity:.75;font-size:13px}
+  #start button{margin-top:10px;width:100%;font-size:16px;padding:10px;background:#f2c14e}
+  #ui{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;width:max-content;max-width:96vw;opacity:.92}
+  .row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+  .stat{background:rgba(10,12,24,.45);backdrop-filter:blur(6px);padding:5px 10px;border-radius:999px;font-size:13px}
+  button{background:rgba(255,255,255,.88);color:#22202a;border:0;border-bottom:3px solid rgba(0,0,0,.25);padding:7px 12px;font:inherit;font-size:13px;font-weight:700;border-radius:10px;cursor:pointer}
+  button:hover{background:#fff}
+  button:active{transform:translateY(2px);border-bottom-width:1px}
+  #mp{position:fixed;right:16px;top:56px;width:290px;background:rgba(255,255,255,.95);color:#24212c;border-radius:16px;padding:14px 16px;box-shadow:0 8px 0 rgba(0,0,0,.18);z-index:6;font-size:14px}
+  #mp .mphead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  #mp .mphead button{padding:2px 8px}
+  #mp label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
+  #mp input{font:inherit;padding:5px 8px;border-radius:8px;border:1px solid #ccc;width:150px}
+  #mp #mpLink{width:100%;box-sizing:border-box;margin-top:6px}
+  #mp .row{margin:6px 0;justify-content:flex-start}
+  #mp button{background:#f2c14e}
+  #mp ul{list-style:none;padding:0;margin:6px 0}
+  #mp li{padding:3px 0}
+  #mp li i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+  #mp small{opacity:.6}
+  #mp .tip{font-size:12px;opacity:.7;line-height:1.45}
+  #mpStatus{font-weight:700;margin:8px 0 2px}
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:24px;font-size:15px;line-height:1.6;background:#0d0f1a;z-index:10}
+</style>
+</head>
+<body>
+<div id="banner"></div>
+<div id="toast" class="pill"></div>
+<div id="cross"></div>
+<div id="prompt"></div>
+<div id="mode" class="pill"></div>
+<div id="inv" class="pill"></div>
+<div id="floats"></div>
+<div id="debug" hidden></div>
+<div id="resume" class="pill" hidden>클릭하면 시점 조작을 다시 시작해요 · 지금은 아래 버튼을 누를 수 있어요</div>
+<div id="start"><div class="card">
+  <h1>Voidrail 3D · 탑승</h1>
+  <p>클릭하면 마우스로 시점을 조작합니다 (Esc로 해제).</p>
+  <table>
+    <tr><td>WASD</td><td>이동 (Shift 달리기)</td></tr>
+    <tr><td>Space</td><td>점프 / 무중력에서 위로</td></tr>
+    <tr><td>Shift</td><td>무중력에서 아래로</td></tr>
+    <tr><td>E</td><td>기관실 레버: 출발/정지</td></tr>
+    <tr><td>Z / X</td><td>감속 / 가속</td></tr>
+    <tr><td>R</td><td>안전줄 감기 (작업실로 복귀)</td></tr>
+    <tr><td>V · M</td><td>1인칭↔외부 시점 · 소리 켜기/끄기</td></tr>
+  </table>
+  <p class="tip">작업실 옆문이나 정원칸 난간 틈으로 나가면 무중력 상태가 됩니다. 떠다니는 고철·목재·결정을 몸으로 스쳐 주워 보세요. 소리가 나니 볼륨을 확인해 주세요.</p>
+  <button id="go">탑승하기</button>
+</div></div>
+<div id="mp" hidden>
+  <div class="mphead"><b>👥 같이 타기</b><button id="mpClose">✕</button></div>
+  <label>내 이름 <input id="mpName" maxlength="16"></label>
+  <label>방 코드 <input id="mpCode" maxlength="16" placeholder="예: K7QX"></label>
+  <div class="row"><button id="mpCreate">새 방 만들기</button><button id="mpJoin">참가</button></div>
+  <div class="row"><button id="mpCopy">초대 링크 복사</button><button id="mpLeave">나가기</button></div>
+  <input id="mpLink" hidden readonly>
+  <p id="mpStatus"></p>
+  <ul id="mpPeers"></ul>
+  <p class="tip">같은 방 코드로 들어온 사람끼리 기차를 함께 탑니다. 방 코드가 곧 암호예요. 기차 위치·시간·세계는 기관사(🚂) 기준으로 맞춰집니다.</p>
+</div>
+<div id="ui">
+  <div class="row">
+    <span class="stat" id="sBiome">-</span><span class="stat" id="sDist">-</span><span class="stat" id="sSpeed">-</span><span class="stat" id="sTime">-</span>
+  </div>
+  <div class="row">
+    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bNext">다음 지역 ⏭</button><button id="bTime">시간 ×1</button><button id="bSeed">새 시드</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
+  </div>
+</div>
+<div id="fade" class="on">세계를 만드는 중…</div>
+<div id="err">게임을 불러오지 못했습니다.<br>로컬 파일로 열었다면 웹 서버로 열어 주세요 (README 참고).</div>
+<script type="importmap">
+{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/"}}
+</script>
+<script>
+  window.__started = false;
+  setTimeout(() => { if (!window.__started) document.getElementById('err').style.display = 'flex'; }, 10000);
+  addEventListener('error', e => { if (!window.__started) return; console.error(e.message); });
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

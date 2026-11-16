@@ -1,0 +1,71 @@
+# Voidrail
+
+절차적으로 생성되는 허공 위를 달리는 기차에서, 친구와 함께 1인칭으로 돌아다니는 협동 탐험 프로토타입.
+*Voidtrain* 의 콘셉트와 *PEAK* 의 저폴리 스타일을 오마주했다.
+
+- 끝없이 이어지는 선로와 떠다니는 섬. 6개 지역, 지역별 랜드마크와 날씨가 있다. 모두 시드 하나에서 생성되며 이미지·모델 파일이 없다.
+- 걸어 다닐 수 있는 4량 기차: 기관실, 작업실, 정원칸, 객실과 옥상 전망대.
+- 기차 밖으로 뛰어내리면 무중력 유영 상태가 된다. 안전줄을 달고 떠다니는 자원을 주울 수 있다.
+- **같이 타기:** WebRTC P2P 멀티플레이. 서버 없이 방 코드만으로 접속한다.
+- 소리는 모두 Web Audio 로 합성한다 (레일, 증기, 바람, 지역 앰비언트).
+
+## 실행
+
+빌드 단계는 없다. 저장소 폴더를 웹 서버로 열면 된다. ES 모듈이라 `file://` 로 직접 열면 동작하지 않는다.
+
+```bash
+npm run serve           # http://localhost:8000
+# 또는
+python3 -m http.server 8000
+```
+
+## 조작
+
+| 키 | 동작 |
+|---|---|
+| WASD · Shift | 이동 · 달리기 |
+| Space | 점프 / 무중력에서 위로 |
+| Shift | 무중력에서 아래로 |
+| E | 기관실 레버: 출발 / 정지 |
+| Z · X | 감속 · 가속 |
+| R | 안전줄 감기 (작업실로 복귀) |
+| V | 1인칭 ↔ 외부 시점 |
+| M | 소리 켜기 / 끄기 |
+
+## 같이 타기
+
+1. 오른쪽 아래 **👥 같이 타기** → **새 방 만들기**를 누른다.
+2. **초대 링크 복사**로 친구에게 링크를 보낸다. 친구가 링크를 열고 탑승하면 자동으로 같은 방에 들어온다.
+3. 먼저 들어온 사람(🚂 기관사)이 기차 위치, 시간, 세계의 기준이 된다.
+
+설계와 측정 결과는 [docs/NETCODE.md](docs/NETCODE.md) 에 정리했다.
+
+## GitHub Pages 배포
+
+1. 이 저장소를 GitHub 에 push 한다.
+2. 저장소 **Settings → Pages → Build and deployment → Source** 를 **GitHub Actions** 로 바꾼다.
+3. `main` 에 push 할 때마다 `.github/workflows/pages.yml` 이 자동으로 배포한다. 주소는 `https://<사용자명>.github.io/<저장소명>/` 이다.
+
+## URL 옵션
+
+| 옵션 | 설명 |
+|---|---|
+| `?room=CODE` | 해당 방에 자동 참가 |
+| `#debug` | FPS·드로우콜·네트워크 상태 패널 |
+| `?net=local&lag=120&jitter=40&loss=0.05` | 같은 브라우저 탭끼리 가짜 네트워크로 넷코드 시험 |
+| `?signal=ws://host:port` | 공용 릴레이 대신 자체 신호 서버 사용 (`npm run relay`) |
+
+## 구조
+
+```
+index.html          UI·스타일·모듈 진입
+js/config.js        수치·지역·날씨 정의 (콘텐츠 조정은 여기서)
+js/world.js         청크 계획(결정론적) → 시간 분할 생성
+js/train.js         걸을 수 있는 기차 + 충돌 박스 + 겹친 면 자동 정리
+js/player.js        1인칭 물리·무중력·카메라
+js/avatar.js        애니메이션 아바타 (걷기·점프·유영·이름표)
+js/net/             transport · clock · snapshot · interp · session
+js/env.js weather.js fx.js audio.js ui.js mpui.js
+vendor/             three.js r160, Trystero 0.27 번들 (npm run vendor 로 재생성)
+docs/NETCODE.md     멀티플레이 설계와 측정
+```

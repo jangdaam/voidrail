@@ -1,0 +1,36 @@
+// 모든 조정 가능한 수치와 콘텐츠 정의를 한곳에 모아둔 설정 파일
+import * as THREE from 'three';
+
+export const F = 1.3;            // 차량 바닥 높이 (차량 로컬 좌표)
+export const CH = 90;            // 청크 길이 (m)
+export const STEP = 1.6;         // 침목 간격
+export const BL = 1300;          // 한 지역 길이 (m)
+export const RAIL_JOINT = 12;    // 레일 이음매 간격 (덜컹 소리)
+
+export const QUALITY = {
+  high:   { label: '높음', pr: 2,    shadow: 2048, density: 1,   fog: 700, weather: 1,   budget: 4 },
+  medium: { label: '보통', pr: 1.25, shadow: 1024, density: .8,  fog: 600, weather: .7,  budget: 3 },
+  low:    { label: '낮음', pr: 1,    shadow: 0,    density: .6,  fog: 480, weather: .45, budget: 2 },
+};
+export const QUALITY_ORDER = ['high', 'medium', 'low'];
+
+const C = h => new THREE.Color(h);
+// chord: 지역 앰비언트 화음 (Hz)
+export const BIOMES = [
+  { name: '초록 고원',      skyTop: C('#4f9be0'), horizon: C('#cdeef5'), grass: C('#79c457'), grass2: C('#a4d968'), rock: C('#8d7b69'), rockDark: C('#5a4d45'), foliage: C('#3c9150'), accent: C('#ffe08a'), tree: 'pine',     weather: 'fireflies', landmark: 'arch',      chord: [196, 247, 294] },
+  { name: '단풍 협곡',      skyTop: C('#6d8ed9'), horizon: C('#ffd6aa'), grass: C('#e8a843'), grass2: C('#d9692f'), rock: C('#a06e53'), rockDark: C('#5f3b33'), foliage: C('#e4552d'), accent: C('#ffbf73'), tree: 'round',    weather: 'leaves',    landmark: 'giantTree', chord: [174, 220, 262] },
+  { name: '청록 결정지대',  skyTop: C('#1f6d8c'), horizon: C('#a3e8db'), grass: C('#5fd3b6'), grass2: C('#86e6c9'), rock: C('#4b7182'), rockDark: C('#2b4153'), foliage: C('#2f8f86'), accent: C('#9ff7ff'), tree: 'crystal',  weather: 'motes',     landmark: 'spire',     chord: [220, 277, 330] },
+  { name: '눈 덮인 봉우리', skyTop: C('#86acd9'), horizon: C('#eef4fb'), grass: C('#f6f9ff'), grass2: C('#dfe9f6'), rock: C('#7e899b'), rockDark: C('#4c5466'), foliage: C('#3b6b59'), accent: C('#fff0c4'), tree: 'pine',     weather: 'snow',      landmark: 'station',   chord: [147, 220, 294] },
+  { name: '진홍의 균열',    skyTop: C('#3d1732'), horizon: C('#ff8f62'), grass: C('#bf4a3d'), grass2: C('#d9663f'), rock: C('#5c2f35'), rockDark: C('#2e1620'), foliage: C('#2c1b20'), accent: C('#ffa060'), tree: 'dead',     weather: 'embers',    landmark: 'chain',     chord: [131, 156, 196] },
+  { name: '보랏빛 버섯숲',  skyTop: C('#3d2b7a'), horizon: C('#e3a9ff'), grass: C('#9d7de3'), grass2: C('#b897ef'), rock: C('#5b4b7c'), rockDark: C('#33294e'), foliage: C('#ff78c6'), accent: C('#ffd3ff'), tree: 'mushroom', weather: 'motes',     landmark: 'mushroom',  chord: [165, 208, 247] },
+];
+
+export const WSPEC = {
+  snow:      { n: 1400, size: .45, color: '#ffffff', add: false, op: .95 },
+  leaves:    { n: 500,  size: .55, color: '#f08a3c', add: false, op: .95 },
+  embers:    { n: 700,  size: .35, color: '#ffa25e', add: true,  op: 1 },
+  motes:     { n: 600,  size: .3,  color: null,      add: true,  op: .85 },
+  fireflies: { n: 260,  size: .45, color: '#fff08a', add: true,  op: 1 },
+};
+
+export const ITEM_NAMES = { scrap: '고철', wood: '목재', crystal: '결정' };
