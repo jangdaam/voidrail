@@ -24,6 +24,21 @@
   #hotbar .slot b{position:absolute;left:6px;top:3px;font-size:11px;opacity:.7}
   #hotbar .slot.on{border-color:#f2c14e;background:rgba(242,193,78,.25)}
   #hotbar .slot.loaded::after{content:'🪵';position:absolute;right:4px;top:2px;font-size:12px}
+  #hitmark{position:fixed;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none;opacity:0;transform:scale(.6) rotate(45deg)}
+  #hitmark::before,#hitmark::after{content:'';position:absolute;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+  #hitmark::before{left:10px;top:0;width:2px;height:22px;background:linear-gradient(#fff 35%,transparent 35% 65%,#fff 65%)}
+  #hitmark::after{top:10px;left:0;height:2px;width:22px;background:linear-gradient(90deg,#fff 35%,transparent 35% 65%,#fff 65%)}
+  #hitmark.on{opacity:1;transform:scale(1) rotate(45deg);transition:transform .08s}
+  #hitmark.kill{transform:scale(1.35) rotate(45deg);filter:drop-shadow(0 0 3px #ff4d4d) hue-rotate(0deg)}
+  #hitmark.kill::before{background:linear-gradient(#ff5a4a 35%,transparent 35% 65%,#ff5a4a 65%)}
+  #hitmark.kill::after{background:linear-gradient(90deg,#ff5a4a 35%,transparent 35% 65%,#ff5a4a 65%)}
+  #vign{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(190,20,20,.55) 100%)}
+  #hp{position:fixed;left:16px;bottom:100px;width:180px;height:14px;border-radius:8px;background:rgba(10,12,24,.55);overflow:hidden}
+  #hp span{position:absolute;left:8px;top:-1px;font-size:11px;font-weight:800;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  #hpfill{height:100%;width:100%;background:linear-gradient(90deg,#5fd36b,#a6e36a);transition:width .15s}
+  #hp.low #hpfill{background:linear-gradient(90deg,#e0452e,#f07a3a)}
+  #raidbar{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(120,30,60,.75)}
+  .float.dmg{color:#ffd76a;font-size:20px}
   #floats{position:fixed;inset:0;pointer-events:none;overflow:hidden}
   .float{position:absolute;left:0;top:0;font-weight:800;font-size:16px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.4);white-space:nowrap}
   #resume{position:fixed;left:50%;top:64%;transform:translateX(-50%);cursor:pointer}
@@ -66,6 +81,10 @@
 <div id="banner"></div>
 <div id="toast" class="pill"></div>
 <div id="cross"></div>
+<div id="hitmark"></div>
+<div id="vign"></div>
+<div id="hp"><div id="hpfill"></div><span>체력</span></div>
+<div id="raidbar" class="pill" hidden></div>
 <div id="prompt"></div>
 <div id="mode" class="pill"></div>
 <div id="inv" class="pill"></div>
@@ -82,7 +101,7 @@
     <tr><td>Shift</td><td>무중력에서 아래로</td></tr>
     <tr><td>E</td><td>상호작용 (레버 · 연료 상자 · 화실)</td></tr>
     <tr><td>1–4 · 휠</td><td>렌치 · 삽 · 권총 · 갈고리</td></tr>
-    <tr><td>좌클릭</td><td>도구 사용</td></tr>
+    <tr><td>좌클릭</td><td>도구 사용 (권총·렌치·삽으로 진드기 공격)</td></tr>
     <tr><td>Z / X</td><td>감속 / 가속</td></tr>
     <tr><td>R</td><td>안전줄 감기 (숙소칸으로 복귀)</td></tr>
     <tr><td>V · M</td><td>1인칭↔외부 시점 · 소리 켜기/끄기</td></tr>
@@ -106,7 +125,7 @@
     <span class="stat" id="sBiome">-</span><span class="stat" id="sDist">-</span><span class="stat" id="sSpeed">-</span><span class="stat" id="sTime">-</span>
   </div>
   <div class="row">
-    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bNext">다음 지역 ⏭</button><button id="bTime">시간 ×1</button><button id="bSeed">새 시드</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
+    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bNext">다음 지역 ⏭</button><button id="bTime">시간 ×1</button><button id="bSeed">새 시드</button><button id="bRaid">습격 ⚔</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
   </div>
 </div>
 <div id="fade" class="on">세계를 만드는 중…</div>

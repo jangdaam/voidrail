@@ -12,7 +12,9 @@ import { boiler, scoop, stoke, deposit, maxSpeed, BIN_CENTER, FIREBOX } from './
 import { addInteractable, currentTarget } from './interact.js';
 import { buildTool, hookHead, TOOL_IDS } from './toolmodels.js';
 import { sparkAt } from './fx.js';
-import { scoopSnd, stokeSnd, gunSnd, hookSnd, clankSnd, clickSnd } from './audio.js';
+import { scoopSnd, stokeSnd, gunSnd, hookSnd, clankSnd, clickSnd, hitThwack } from './audio.js';
+import { rayMite, meleeMites, hitMite } from './raid.js';
+import { feel } from './feel.js';
 
 let H = {};               // { toggleTrain, toast, act(event), flashInv }
 
@@ -111,23 +113,24 @@ export function useTool() {
       stoke(); S.shovelLoad = 0; swing('throw', .5); stokeSnd(); H.act?.({ a: 'stoke' });
       _v.copy(FIREBOX).applyMatrix4(locoCar.g.matrixWorld); sparkAt(_v, 0xffa040, 14, 2.5); return true;
     }
-    swing('swing', .4); return false;
+    swing('swing', .4); melee = { t: .12, dmg: 1, range: 2.6 }; return false;
   }
   if (id === 'wrench') {
-    swing('swing', .45);
-    if (target) { clankSnd(); hint('아직 고칠 곳이 없어요 (고장 시스템은 다음 단계)'); }
+    swing('swing', .45); melee = { t: .11, dmg: 2, range: 2.4, target };
     return true;
   }
   if (id === 'pistol') {
-    cool = .32; swing('recoil', .18); gunSnd();
+    cool = .32; swing('recoil', .18); gunSnd(); feel.recoil(.05, .025); feel.shake(.025);
     vm[2].parts.flash.visible = true; setTimeout(() => vm[2].parts.flash.visible = false, 50);
     aim(); ray.set(_eye, _f); ray.far = 220;
     const targets = [...CARS.map(c => c.g)]; for (const rec of chunks.values()) targets.push(rec.group);
     const hit = ray.intersectObjects(targets, true).find(h => h.distance > .4);
-    const end = hit ? hit.point : _v.copy(_eye).addScaledVector(_f, 220);
+    const mh = rayMite(_eye, _f, hit ? hit.distance : 220);
+    const end = mh ? mh.point : hit ? hit.point : _v.copy(_eye).addScaledVector(_f, 220);
     handWorld(_hand); tracerGeo.attributes.position.array.set([_hand.x, _hand.y, _hand.z, end.x, end.y, end.z]); tracerGeo.attributes.position.needsUpdate = true;
     tracer.visible = true; tracerT = .08; tracer.material.opacity = 1;
-    if (hit) sparkAt(hit.point, hit.object.userData.item ? 0xffe0a0 : 0xd9e2ea, 8, 2.5);
+    if (mh) { sparkAt(mh.point, 0xb98cff, 10, 3); hitMite(mh.mite, 1, _f, mh.point); }
+    else if (hit) sparkAt(hit.point, hit.object.userData.item ? 0xffe0a0 : 0xd9e2ea, 8, 2.5);
     return true;
   }
   if (id === 'hook') {
@@ -139,7 +142,17 @@ export function useTool() {
     return true;
   }
 }
-let hintT = 0;
+let hintT = 0, melee = null;
+/** 휘두르기 중간(맞는 순간)에 판정 */
+function updateMelee(dt) {
+  if (!melee) return; melee.t -= dt; if (melee.t > 0) return;
+  const M = melee; melee = null; aim();
+  const hits = meleeMites(_eye, _f, M.range);
+  if (hits.length) {
+    for (const m of hits) { _v.subVectors(m.g.position, _eye).normalize(); hitMite(m, M.dmg, _v, m.g.position); sparkAt(m.g.position, 0xffffff, 6, 3); }
+    feel.shake(.07); feel.recoil(-.03, .03); if (M.dmg > 1) clankSnd();
+  } else if (M.target && M.dmg > 1) { clankSnd(); hint('아직 고칠 곳이 없어요 (고장 시스템은 다음 단계)'); }
+}
 function hint(msg) { if (hintT <= 0) { H.toast(msg); hintT = 4; } }
 function swing(kind, dur) { useKind = kind; useT = dur; useDur = dur; }
 
@@ -170,7 +183,7 @@ function handWorld(out) {
 
 /* ---------- 매 프레임 ---------- */
 export function updateTools(dt) {
-  cool = Math.max(0, cool - dt); hintT -= dt;
+  cool = Math.max(0, cool - dt); hintT -= dt; updateMelee(dt);
   // 퀵슬롯 표시
   slotEls.forEach((el, i) => el.classList.toggle('on', i === S.tool));
   slotEls[1].classList.toggle('loaded', !!S.shovelLoad);

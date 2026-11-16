@@ -13,10 +13,13 @@ import { updateWeather } from './weather.js';
 import { updateSmoke, smokeBurst, steamPuff, updateWhale, hideWhale, pickupFx, updateFx } from './fx.js';
 import { initAudio, setMuted, setChord, clack, chuff, whistle, chime, biomeSting, updateAudio, hiss } from './audio.js';
 import { initUI, updateHUD, banner, toast, fade, flashInv, setMuteLabel, showError } from './ui.js';
+import { RAID } from './config.js';
 import { Session, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT, toolFlags } from './net/session.js';
 import { boiler, updateBoiler, maxSpeed, boilerState, applyBoilerState } from './boiler.js';
 import { updateInteract } from './interact.js';
 import { initTools, updateTools, renderViewmodel, applyRemoteAct } from './tools.js';
+import { initRaid, updateRaid, updateHealth, startRaid, raid, aliveCount, clearRaid } from './raid.js';
+import { updateFeel, applyKick, timeFactor } from './feel.js';
 import { makeTransport } from './net/transport.js';
 import { now } from './net/clock.js';
 import { initMPUI, setPeers, setMPStatus } from './mpui.js';
@@ -30,7 +33,7 @@ renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault
 
 let snap = true, running = true, loadT = 0;
 const startLoading = () => { S.loading = true; loadT = 0; fade(true); };
-function regenerate() { resetWorld(); hideWhale(); snap = true; updateSea(true); updateChunks(S.sTrain); startLoading(); }
+function regenerate() { clearRaid(); resetWorld(); hideWhale(); snap = true; updateSea(true); updateChunks(S.sTrain); startLoading(); }
 
 /* ---------------- 멀티플레이 ---------------- */
 let session = null, netTrain = null, todTarget = null;
@@ -103,12 +106,15 @@ const handlers = {
   },
   newSeed() { if (!hostOnly()) return; setSeed((Math.random() * 1e9) | 0); shuffleOrder(); S.biomeName = ''; regenerate(); },
   joinRoom, leaveRoom,
+  raidNow() { if (!hostOnly()) return; if (S.targetSpeed === 0) handlers.toggleTrain(); startRaid(); },
+  raidInfo: () => ({ active: raid.active, alive: aliveCount() + raid.toSpawn, next: raid.next }),
   netStats: () => session?.connected ? session.stats() : null,
 };
 setBiomeListener((B, idx) => { banner(B.name); setChord(idx); if (S.started && !S.loading) biomeSting(); });
 
 initUI(handlers);
 initTools({ toggleTrain: handlers.toggleTrain, toast, flashInv, act: d => session?.sendAct(d) });
+initRaid({ toast, banner, fade, flashInv });
 initMPUI(handlers, params);
 shuffleOrder();
 updateChunks(S.sTrain);
@@ -139,7 +145,8 @@ function frame() {
   if (!running) return;
   requestAnimationFrame(frame);
   PM(null);
-  const realDt = clock.getDelta(), dt = Math.min(.1, realDt); S.time += dt;
+  const realDt = clock.getDelta(); updateFeel(Math.min(.1, realDt));
+  const dt = Math.min(.1, realDt) * timeFactor(); S.time += dt;
   profGap = realDt * 1000;
   timeScale += ((realDt > 0 ? dt / realDt : 1) - timeScale) * .2;
 
@@ -169,10 +176,11 @@ function frame() {
   placeTrain(); PM('place');
   if (S.started) updatePlayer(dt);
   playerWorld(wp);
-  updateCamera(dt, snap); snap = false; PM('player');
+  updateCamera(dt, snap); snap = false; applyKick(); PM('player');
   localAvatar.setTool(S.tool, S.shovelLoad);
   updateAvatar(wp, dt);
-  updateInteract(); updateTools(dt); PM('tools');
+  updateInteract(); updateTools(dt);
+  updateRaid(dt, !isClient()); updateHealth(dt); PM('tools');
   for (const p of updatePickups(wp, picks)) { S.inv[p.type]++; pickupFx(p.type, p.pos); chime(p.type); flashInv(); session?.sendPick(p.id); }
   session?.update(dt, S.time); PM('pickups');
 

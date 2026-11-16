@@ -49,6 +49,7 @@ export function initUI(handlers) {
   $('bSeed').onclick = () => H.newSeed();
   $('bQual').onclick = () => { autoQuality = false; setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(S.quality) + 1) % 3]); };
   $('bMute').onclick = () => H.toggleMute();
+  $('bRaid').onclick = () => H.raidNow();
   $('resume').onclick = () => tryLock();
   if (S.debug) $('debug').hidden = false;
   setQuality(S.quality, true);
@@ -105,6 +106,8 @@ export function updateHUD(dt) {
   $('prompt').textContent = promptText() || toolPrompt();
   $('boil').textContent = `🔥 불 ${Math.round(S.heat * 100)}% · 압력 ${Math.round(S.pressure * 100)}%`;
   $('boil').classList.toggle('low', S.pressure < .3);
+  $('hpfill').style.width = S.hp + '%'; $('hp').classList.toggle('low', S.hp < 35);
+  const R = H.raidInfo?.(); $('raidbar').hidden = !R?.active; if (R?.active) $('raidbar').textContent = `⚠ 습격 중 · 공허 진드기 ${R.alive}마리`;
   $('cross').style.display = S.viewMode === 'fp' && S.started ? 'block' : 'none';
   if (S.debug) {
     const info = renderer.info.render;

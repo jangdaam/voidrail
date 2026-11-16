@@ -52,6 +52,18 @@ export const BOILER = {
   vmax: 40,            // 최고 속도 (m/s)
 };
 
+/* 습격 (공허 진드기) */
+export const RAID = {
+  firstDelay: 100,              // 출발 후 첫 습격까지 (기차가 달린 시간, 초)
+  intervalMin: 160, intervalMax: 260,
+  baseSize: 4, maxSize: 9,      // 첫 습격 마릿수, 최대
+  hp: 3, speed: 8, dash: 15,    // 진드기 체력(권총 3발 · 렌치 2대), 비행·돌진 속도
+  bite: 14, biteCool: 2.6,      // 무는 피해, 다시 물기까지
+  drain: .012,                  // 달라붙은 진드기 한 마리당 초당 압력 감소
+  extraDrop: .35,               // 고철 조각을 하나 더 떨어뜨릴 확률
+  hpMax: 100, regen: 4, regenDelay: 5,
+};
+
 /* 도구 퀵슬롯 */
 export const TOOLS = [
   { id: 'wrench', name: '렌치', key: '1', hint: '고장 난 곳 수리 (다음 단계)' },

@@ -72,6 +72,14 @@ export function gunSnd() { if (!ctx) return; noiseBurst(1400, .5, .25, .45, 'low
 export function hookSnd(latch) { if (!ctx) return; if (latch) { tone(1200, .08, .12, 'square'); noiseBurst(2200, 4, .06, .1); } else { noiseBurst(1800, 1.2, .25, .12, 'bandpass'); tone(400, .25, .06, 'sawtooth', 0, 2); } }
 export function clankSnd() { if (!ctx) return; tone(1450, .35, .1, 'triangle'); tone(2210, .25, .06, 'sine'); noiseBurst(3000, 2, .05, .1); }
 export function clickSnd() { if (!ctx) return; tone(900, .04, .06, 'square'); }
+/* 전투 */
+export function hitThwack() { if (!ctx) return; noiseBurst(700, 1.2, .12, .3, 'lowpass'); tone(180, .1, .22, 'square', 0, .5); tone(1800, .05, .05, 'triangle'); }
+export function killPop() { if (!ctx) return; noiseBurst(500, .7, .35, .35, 'lowpass'); tone(620, .25, .12, 'sawtooth', 0, .25); tone(1320, .12, .08, 'triangle', .03, 1.6); }
+export function hurt() { if (!ctx) return; tone(120, .3, .3, 'sawtooth', 0, .5); noiseBurst(400, .8, .25, .25, 'lowpass'); }
+export function chitter(n = 1) { if (!ctx) return; for (let i = 0; i < 4 * n; i++) tone(2400 + Math.random() * 1500, .04, .035, 'square', i * .055); }
+export function chew() { if (!ctx) return; noiseBurst(1600, 3, .09, .09); tone(300 + Math.random() * 120, .07, .05, 'square'); }
+export function raidHorn() { if (!ctx) return; for (const [f, w] of [[196, 0], [185, .55], [196, 1.1]]) { tone(f, .5, .12, 'sawtooth', w); tone(f * 1.5, .5, .05, 'sawtooth', w); } }
+export function raidClear() { if (!ctx) return; [523, 659, 784, 1047].forEach((f, i) => tone(f, .5, .07, 'triangle', i * .1)); }
 export function biomeSting() { if (!ctx) return; const ch = BIOMES[S.biomeIdx].chord; ch.forEach((f, i) => tone(f * 2, 1.6, .05, 'sine', i * .18)); }
 /** 매 프레임: 속도·무중력 여부에 따라 바람, 밤에 패드 필터 낮춤 */
 export function updateAudio(inVoid, inside) {
