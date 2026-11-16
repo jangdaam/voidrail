@@ -47,7 +47,7 @@ export function updateWeather(dt) {
     if (nearTrain && x * x + y * y + z * z < 1600) {
       for (const c of CARS) {
         w.set(cp.x + x, cp.y + y, cp.z + z).applyMatrix4(c.inv);
-        if (w.x > c.x0 - .7 && w.x < c.x1 + .7 && Math.abs(w.z) < HALF_W + .2 && w.y > 0 && w.y < F + 2.75 && c.name !== '정원칸') { hide = true; break; }
+        if (w.x > c.x0 - .7 && w.x < c.x1 + .7 && Math.abs(w.z) < HALF_W + .2 && w.y > 0 && w.y < F + 2.75 && c.enclosed) { hide = true; break; }
       }
     }
     out[o] = hide ? 0 : x; out[o + 1] = hide ? -1e4 : y; out[o + 2] = hide ? 0 : z;

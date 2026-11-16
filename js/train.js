@@ -7,8 +7,10 @@ import { scene } from './scene.js';
 import { F } from './config.js';
 import { S } from './state.js';
 
-const RED = C('#c9503a'), GOLD = C('#f2c14e'), DARK = C('#2e2b34'), WOOD = C('#9a6a44'), FLOOR = C('#b98b5c'),
-  TEAL = C('#2f8f9d'), MUST = C('#d39b3a'), CREAM = C('#f3e6cc'), GLOWC = C('#ffd98a'), FIRE = C('#ff7a2e'), STONE = C('#5b5560'), CEIL = C('#e6d2ae');
+// 시작 기차 팔레트: 차콜 · 철 · 구리 (CarB 기본 부품이 쓰는 이름은 같은 톤으로 재정의)
+const CHAR = C('#2b2b2f'), CHAR2 = C('#38383d'), IRON = C('#6b7078'), IRON_D = C('#4b4f56'), COPPER = C('#b8733f'), COPPER_D = C('#8a5732'),
+  GLOWC = C('#ffd98a'), FIRE = C('#ff7a2e');
+const DARK = CHAR, GOLD = COPPER, WOOD = C('#5a4a3e'), FLOOR = C('#4f463f'), CREAM = C('#8e8a84'), CEIL = C('#7d7770');
 const RAIL_H = 1.25;   // 난간 충돌 높이 (점프로 못 넘음, 시각 난간은 1.0)
 
 /* 차량 폭 확장: 아래 부품 정의는 원래 폭(바깥 반폭 1.7m) 기준 좌표로 적혀 있고,
@@ -141,138 +143,105 @@ function finishCar(B, x0, x1, wheelXs, name) {
 }
 const bogie = (x0, x1) => [x0 + 1.1, x0 + 2.2, x1 - 2.2, x1 - 1.1];
 
+/* ================= 시작 기차: 투박한 3량 (차콜 · 철 · 구리) =================
+ * 보일러 시스템을 염두에 둔 배치
+ *   기관차  : 앞은 보일러, 뒤는 지붕만 얹은 개방형 운전실. 운전실 앞벽(보일러 뒷면)에 화실 문·압력계·가감 레버
+ *   연료차  : 연료 상자(장작·결정 보관) + 공구 상자. 화실까지 몇 걸음이라 '나르기'가 생김
+ *   숙소칸  : 판잣집 같은 작은 객차. 침대·등. 시작 지점
+ */
 /* 1) 기관차 */
 const L = new CarB();
-L.base(-4.5, 4.5, ['rear']);
-L.sideWall(1.64, -4.5, -.7, [[-2.3, -1.4]], RED); L.sideWall(-1.64, -4.5, -.7, [[-2.3, -1.4]], RED);
-L.endWall(-4.5, RED);
-L.box(-.84, -.7, F, F + 2.6, -1.05, 1.05, DARK);
-L.box(-.84, -.7, F + 2.2, F + 2.6, 1.05, 1.7, RED); L.box(-.84, -.7, F + 2.2, F + 2.6, -1.7, -1.05, RED);
-L.roof(-4.5, -.7);
-L.box(-.68, -.62, F + .3, F + .95, -.38, .38, FIRE, { collide: false, kind: 'glow' });
-L.box(-.68, -.62, F + 1.75, F + 2.0, -.6, -.35, GLOWC, { collide: false, kind: 'glow' });
-L.box(-.68, -.62, F + 1.75, F + 2.0, .35, .6, GLOWC, { collide: false, kind: 'glow' });
-L.box(-4.3, -3.6, F, F + .5, 1.6, 2.18, WOOD, { raw: true });                          // 기관사 의자
-L.box(-4.4, -3.3, F, F + .9, -2.18, -1.2, DARK, { raw: true });                        // 석탄통
-L.add(new THREE.DodecahedronGeometry(.45, 0), C('#232027'), M(-3.85, F + .95, -1.69, 0, 0, 0, 1.2, .5, 1), 'solid', true);
-L.add(new THREE.CylinderGeometry(1.05, 1.05, 4.4, 10), RED, M(1.5, F + 1.15, 0, 0, 0, Math.PI / 2));
-for (const x of [.3, 1.5, 2.7]) L.add(new THREE.CylinderGeometry(1.09, 1.09, .14, 10), GOLD, M(x, F + 1.15, 0, 0, 0, Math.PI / 2));
-L.add(new THREE.CylinderGeometry(.95, .95, .3, 10), DARK, M(3.8, F + 1.15, 0, 0, 0, Math.PI / 2));
-L.box(-.7, 3.95, F, F + 2.2, -1.05, 1.05, RED, { visual: false });
-L.add(new THREE.CylinderGeometry(.28, .22, 1.3, 7), DARK, M(2.8, F + 2.75, 0)); L.add(new THREE.CylinderGeometry(.5, .28, .45, 7), DARK, M(2.8, F + 3.55, 0));
-L.box(2.5, 3.1, F + 2.1, F + 3.8, -.3, .3, DARK, { visual: false });
-L.add(new THREE.SphereGeometry(.42, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), GOLD, M(1.2, F + 2.1, 0)); L.box(.85, 1.55, F + 2.1, F + 2.5, -.4, .4, GOLD, { visual: false });
-L.railing(-.7, 4.45, 1.62, 1.7); L.railing(-.7, 4.45, -1.7, -1.62); L.railing(4.38, 4.46, -1.7, 1.7);
-L.add(new THREE.CylinderGeometry(.26, .26, .25, 8), GLOWC, M(4.0, F + 2.35, 0, 0, 0, Math.PI / 2), 'glow');
-L.box(3.85, 4.15, F + 2.15, F + 2.55, -.2, .2, DARK, { visual: false });
-L.add(new THREE.ConeGeometry(.9, 1.1, 4), DARK, M(5.0, .75, 0, 0, Math.PI / 4, -Math.PI / 2));
-export const locoCar = finishCar(L, -4.5, 4.5, [-3.4, -2.2, 1.2, 2.6, 3.8], '기관실');
-export const LEVER_POS = new THREE.Vector3(-.95, F, .62);
-export const lever = new THREE.Group(); lever.position.set(-.95, F + .95, .62);
-lever.add(new THREE.Mesh(prep(new THREE.BoxGeometry(.08, .8, .08), GOLD, M(0, .4, 0)), landMat));
-lever.add(new THREE.Mesh(prep(new THREE.IcosahedronGeometry(.1, 0), RED, M(0, .82, 0)), landMat));
-locoCar.g.add(lever);
-locoCar.g.add(new THREE.Mesh(prep(new THREE.BoxGeometry(.25, .2, .3), DARK, M(-.95, F + .9, .62)), landMat));
-
-/* 2) 작업실 */
-const Wk = new CarB();
-Wk.base(-4.5, 4.5, ['front', 'rear']);
-Wk.sideWall(1.64, -4.5, 4.5, [[-.7, .7]], MUST); Wk.sideWall(-1.64, -4.5, 4.5, [[-.7, .7]], MUST);
-Wk.endWall(-4.5, MUST); Wk.endWall(4.5, MUST); Wk.roof(-4.5, 4.5);
-Wk.box(-3.7, -1.2, F, F + .9, 1.6, 2.18, WOOD, { raw: true });                         // 작업대
-Wk.box(-3.4, -3.0, F + .9, F + 1.15, 1.75, 2.05, C('#6b7a86'), { collide: false, raw: true });
-Wk.box(-2.4, -1.6, F + .9, F + 1.0, 1.7, 2.1, C('#7c858f'), { collide: false, raw: true });
-Wk.add(new THREE.CylinderGeometry(.06, .06, .5, 5), C('#c27b46'), M(-2.0, F + 1.0, 1.85, 0, 0, Math.PI / 2), 'solid', true);
-Wk.box(1.2, 3.9, F, F + 2.0, -1.58, -1.15, WOOD, { visual: false });
-// 선반: 뒤판은 창틀(벽 안쪽 -1.53)보다 확실히 안쪽에 두고, 선반널·물건은 판 사이에 끼움
-Wk.box(1.2, 3.9, F, F + 2.0, -1.5, -1.45, WOOD, { collide: false }); Wk.box(1.2, 1.27, F, F + 2.0, -1.45, -1.15, WOOD, { collide: false }); Wk.box(3.83, 3.9, F, F + 2.0, -1.45, -1.15, WOOD, { collide: false });
-for (const y of [.08, .65, 1.3, 1.95]) Wk.box(1.27, 3.83, F + y - .05, F + y, -1.45, -1.17, C('#7a5233'), { collide: false });
-for (let i = 0; i < 6; i++) Wk.box(1.4 + i * .42, 1.7 + i * .42, F + .652 + (i % 3) * .65, F + .9 + (i % 3) * .65, -1.42, -1.22, [C('#5fa8d3'), C('#e07a5f'), C('#81b29a'), C('#f2cc8f')][i % 4], { collide: false });
-Wk.box(-4.3, -3.2, F, F + 1.3, -2.18, -1.4, STONE, { raw: true });                     // 화로
-Wk.box(-3.95, -3.55, F + .25, F + .7, -1.38, -1.32, FIRE, { collide: false, kind: 'glow', raw: true });
-Wk.add(new THREE.CylinderGeometry(.15, .15, 1.4, 6), STONE, M(-3.75, F + 2.0, -1.2));
-Wk.box(2.5, 3.3, F, F + .8, 1.45, 2.18, C('#b9874f'), { raw: true }); Wk.box(3.4, 4.2, F, F + .6, 1.6, 2.18, C('#c8955a'), { raw: true }); Wk.box(2.7, 3.2, F + .8, F + 1.3, 1.6, 2.1, C('#a8763f'), { raw: true });
-Wk.box(-.15, .15, F + 2.15, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
-Wk.box(-.02, .02, F + 2.45, F + 2.52, -.02, .02, DARK, { collide: false });
-Wk.box(-.9, .9, F, F + .035, -.5, .5, C('#3f7cac'), { collide: false });   // 러그
-export const workCar = finishCar(Wk, -4.5, 4.5, bogie(-4.5, 4.5), '작업실');
-
-/* 3) 정원 평판차 + 옥상 계단 */
-const Gd = new CarB();
-Gd.base(-4, 4, ['front', 'rear']);
-Gd.railing(-4, 4, 1.62, 1.7, [[-.8, .8]]); Gd.railing(-4, 4, -1.7, -1.62, [[-.8, .8]]);
-// 계단: 시각은 디딤판(위 7cm)+챌판으로 얇게, 충돌은 통짜 블록 → 블록끼리 맞닿는 면이 화면에 안 생김
-for (let k = 0; k < 7; k++) {
-  const x1 = -.4 - .5 * k, top = F + .4 * (k + 1), col = k % 2 ? WOOD : C('#a8774a');
-  Gd.box(x1 - .5, x1, F, top, -1.55, -.35, col, { visual: false });
-  Gd.box(x1 - .52, x1 + .02, top - .07, top, -1.56, -.34, col, { collide: false });             // 디딤판 (앞으로 2cm 돌출)
-  Gd.box(x1 - .02, x1, top - .4, top - .07, -1.54, -.36, C('#7a5233'), { collide: false });       // 챌판
-  for (const [z0, z1] of [[-1.56, -1.54], [-.38, -.36]]) Gd.box(x1 - .5, x1, F, top - .07, z0, z1, C('#6a4632'), { collide: false });   // 옆판
-}
-Gd.box(-4.15, -.4, F, F + .03, -1.54, -.36, C('#7a5233'), { collide: false });                    // 계단 바닥판
-Gd.box(-4.12, -4.08, F, F + 2.75, -1.54, -.36, C('#7a5233'), { collide: false });                  // 계단 뒷판
-Gd.box(-4.65, -3.4, F + 2.62, F + 2.81, -1.55, -.35, DARK);                                        // 지붕으로 건너가는 발판 (객실 지붕보다 1cm 높게)
-Gd.box(-3.9, -3.85, F + 2.81, F + 3.7, -1.62, -1.57, DARK, { collide: false }); Gd.box(-3.9, -.4, F + 3.2, F + 3.25, -1.62, -1.57, DARK, { collide: false });
-for (const x of [-.45, -2.15]) Gd.box(x - .025, x + .025, F + .4 + (x === -.45 ? 0 : 1.6), F + 3.2, -1.62, -1.57, DARK, { collide: false });
-Gd.box(.9, 3.4, F, F + .5, .35, 1.45, C('#6a4632'));
-for (let i = 0; i < 9; i++) { const x = 1.1 + (i % 5) * .5, z = .6 + Math.floor(i / 5) * .5; Gd.add(new THREE.ConeGeometry(.18, .45 + (i % 3) * .15, 5), C(i % 4 === 0 ? '#e86a8c' : '#6cc04a'), M(x, F + .72, z)); }
-Gd.box(-1.6, -1, F, F + .6, .7, 1.4, C('#b9874f')); Gd.box(-2.6, -1.8, F, F + .4, .9, 1.5, C('#a8763f'));
-Gd.box(3.55, 3.65, F, F + 2.4, -1.35, -1.25, DARK);
-Gd.box(3.45, 3.75, F + 2.3, F + 2.6, -1.45, -1.15, GLOWC, { collide: false, kind: 'glow' });
-export const gardenCar = finishCar(Gd, -4, 4, bogie(-4, 4), '정원칸');
-
-/* 4) 객실 + 뒷발코니 + 옥상 전망대 */
-const Co = new CarB();
-Co.base(-4.5, 4.5, ['front']);
-Co.sideWall(1.64, -3.5, 4.5, [], TEAL); Co.sideWall(-1.64, -3.5, 4.5, [], TEAL);
-Co.endWall(4.5, TEAL); Co.endWall(-3.5, TEAL);
-Co.box(-3.6, 4.6, F + 2.6, F + 2.8, -1.85, 1.85, DARK);
-Co.box(-3.4, 4.4, F + 2.5, F + 2.57, -1.54, 1.54, CEIL, { collide: false });
+L.base(-4, 4, ['rear']);
+// 보일러 (앞쪽)
+L.add(new THREE.CylinderGeometry(.95, .95, 4.0, 10), IRON, M(1.3, F + 1.05, 0, 0, 0, Math.PI / 2));
+for (const x of [.2, 1.4, 2.6]) L.add(new THREE.CylinderGeometry(.99, .99, .12, 10), COPPER, M(x, F + 1.05, 0, 0, 0, Math.PI / 2));
+L.add(new THREE.CylinderGeometry(.9, .9, .3, 10), CHAR, M(3.45, F + 1.05, 0, 0, 0, Math.PI / 2));
+L.box(-.7, 3.6, F, F + 2.0, -.95, .95, IRON, { visual: false });
+L.add(new THREE.CylinderGeometry(.26, .22, 1.2, 7), CHAR, M(2.6, F + 2.5, 0)); L.add(new THREE.CylinderGeometry(.42, .26, .35, 7), CHAR, M(2.6, F + 3.25, 0));
+L.box(2.33, 2.87, F + 1.9, F + 3.45, -.27, .27, CHAR, { visual: false });
+L.add(new THREE.SphereGeometry(.36, 7, 3, 0, Math.PI * 2, 0, Math.PI / 2), COPPER, M(1.0, F + 1.95, 0)); L.box(.7, 1.3, F + 1.9, F + 2.3, -.33, .33, COPPER, { visual: false });
+L.add(new THREE.CylinderGeometry(.22, .22, .2, 8), GLOWC, M(3.65, F + 2.05, 0, 0, 0, Math.PI / 2), 'glow');
+L.add(new THREE.CylinderGeometry(.27, .27, .14, 8), COPPER_D, M(3.58, F + 2.05, 0, 0, 0, Math.PI / 2));
+L.add(new THREE.ConeGeometry(.85, 1.0, 4), CHAR, M(4.45, .75, 0, 0, Math.PI / 4, -Math.PI / 2));
+L.railing(-.7, 3.95, 1.62, 1.7); L.railing(-.7, 3.95, -1.7, -1.62); L.railing(3.9, 3.98, -1.7, 1.7);
+// 운전실 (뒤쪽, 개방형): 낮은 옆벽 + 기둥 4개 + 지붕
 for (const s of [1, -1]) {
-  Co.box(-3.6, 4.6, F + 2.8, F + 2.8 + RAIL_H, s > 0 ? 1.75 : -1.85, s > 0 ? 1.85 : -1.75, DARK, { visual: false });
-  Co.box(-3.6, 4.6, F + 3.5, F + 3.6, s > 0 ? 1.75 : -1.85, s > 0 ? 1.85 : -1.75, DARK, { collide: false });
-  for (let x = -3.5; x <= 4.6; x += 1.35) Co.box(x - .04, x + .04, F + 2.8, F + 3.6, s > 0 ? 1.76 : -1.84, s > 0 ? 1.84 : -1.76, DARK, { collide: false });
+  const z0 = s > 0 ? 1.58 : -1.7, z1 = s > 0 ? 1.7 : -1.58;
+  L.box(-4, -2.7, F, F + 1.05, z0, z1, CHAR2); L.box(-1.7, -.7, F, F + 1.05, z0, z1, CHAR2);   // 옆벽 (가운데는 출입구)
+  L.box(-4, -.7, F + 1.05, F + 1.13, z0 - .03, z1 + .03, COPPER_D, { collide: false });          // 구리 테두리
+  L.box(-4, -.7, F + 1.05, F + RAIL_H, z0, z1, CHAR2, { visual: false });                          // 넘지 못하게
 }
-Co.box(-3.7, -3.6, F + 2.8, F + 2.8 + RAIL_H, -1.85, 1.85, DARK, { visual: false }); Co.box(-3.7, -3.6, F + 3.5, F + 3.6, -1.85, 1.85, DARK, { collide: false });
-Co.box(-1, 1, F + 2.8, F + 3.25, .7, 1.25, WOOD);
-Co.railing(-4.5, -4.42, -1.7, 1.7); Co.railing(-4.5, -3.5, 1.62, 1.7); Co.railing(-4.5, -3.5, -1.7, -1.62);
-Co.box(-3.3, -.6, F, F + .55, -1.58, -.75, C('#e9dcc4'));
-Co.box(-3.3, -2.8, F + .55, F + .7, -1.5, -.85, C('#ffffff'), { collide: false });
-Co.box(-2.7, -.7, F + .55, F + .62, -1.58, -.75, C('#c94f6d'), { collide: false });
-Co.box(-3.3, -.6, F + 1.5, F + 1.7, -1.58, -.75, WOOD);
-Co.box(-2.7, -.7, F + 1.7, F + 1.77, -1.58, -.75, C('#5fa8d3'), { collide: false });
-Co.box(1.6, 2.6, F, F + .75, .6, 1.58, WOOD); Co.box(2.8, 3.4, F, F + .45, .7, 1.58, C('#7a5233')); Co.box(.8, 1.4, F, F + .45, .7, 1.58, C('#7a5233'));
-Co.box(-2.5, 3, F, F + .035, -.6, .6, C('#a34d5c'), { collide: false });
-Co.box(-.15, .15, F + 2.15, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
-Co.box(2.0, 2.2, F + .75, F + .95, 1.7, 1.9, GLOWC, { collide: false, kind: 'glow', raw: true });
-export const coachCar = finishCar(Co, -4.5, 4.5, bogie(-4.5, 4.5), '객실');
+for (const [x, z] of [[-3.95, 1.6], [-3.95, -1.6], [-.78, 1.6], [-.78, -1.6]]) L.box(x - .07, x + .07, F, F + 2.6, z - .07, z + .07, CHAR);
+L.box(-4.15, -.55, F + 2.6, F + 2.75, -1.85, 1.85, IRON_D);
+L.box(-4, -3.92, F, F + 1.05, -1.7, -.95, CHAR2); L.box(-4, -3.92, F, F + 1.05, .95, 1.7, CHAR2);   // 뒷벽 (연료차 쪽 통로 1.9m)
+// 운전실 앞벽 = 보일러 뒷면: 화실 문, 압력계, 가감 레버 자리
+L.box(-.84, -.7, F, F + 2.3, -.95, .95, IRON_D);
+L.box(-.92, -.84, F + .3, F + .9, -.35, .35, COPPER_D, { collide: false });                        // 화실 문틀
+L.box(-.96, -.92, F + .38, F + .82, -.27, .27, FIRE, { collide: false, kind: 'glow' });             // 화실 불빛 (나중에 불 세기 연동)
+L.add(new THREE.CylinderGeometry(.2, .2, .08, 12), COPPER, M(-.88, F + 1.65, -.5, 0, 0, Math.PI / 2));   // 압력계 테두리
+L.add(new THREE.CylinderGeometry(.16, .16, .04, 12), C('#e8e0d0'), M(-.93, F + 1.65, -.5, 0, 0, Math.PI / 2), 'glow');
+L.box(-4, -3.2, F, F + .45, 1.1, 1.58, CHAR2, { raw: false });                                     // 앉을 수 있는 상자
+export const locoCar = finishCar(L, -4, 4, [-3.2, -1.9, 1.0, 2.3, 3.4], '기관실');
+locoCar.enclosed = false;
+export const LEVER_POS = new THREE.Vector3(-.95, F, .55);
+export const lever = new THREE.Group(); lever.position.set(-.95, F + .95, .55);
+lever.add(new THREE.Mesh(prep(new THREE.BoxGeometry(.07, .8, .07), IRON, M(0, .4, 0)), landMat));
+lever.add(new THREE.Mesh(prep(new THREE.IcosahedronGeometry(.09, 0), COPPER, M(0, .82, 0)), landMat));
+locoCar.g.add(lever);
+locoCar.g.add(new THREE.Mesh(prep(new THREE.BoxGeometry(.25, .2, .3), CHAR, M(-.95, F + .9, .55)), landMat));
+// 압력계 바늘 (나중에 보일러 압력과 연동)
+export const gaugeNeedle = new THREE.Mesh(prep(new THREE.BoxGeometry(.02, .13, .02), C('#c23b22'), M(0, .055, 0)), glowMat);
+gaugeNeedle.position.set(-.96, F + 1.65, -.5); gaugeNeedle.rotation.x = .8; locoCar.g.add(gaugeNeedle);
+export const CHIMNEY = new THREE.Vector3(2.6, F + 3.5, 0);
 
-locoCar.off = 0; workCar.off = 9.72; gardenCar.off = 9.72 + 4.5 + .72 + 4; coachCar.off = gardenCar.off + 4 + .72 + 4.5;
+/* 2) 연료차 */
+const T = new CarB();
+T.base(-3, 3, ['front', 'rear']);
+T.railing(-3, 3, 1.62, 1.7, [[-.6, .6]]); T.railing(-3, 3, -1.7, -1.62, [[-.6, .6]]);
+// 연료 상자: 한쪽 벽에 붙여 가운데 통로를 비움 (최종 좌표)
+const BIN = { x0: -2.4, x1: 1.0, z0: -2.16, z1: -.55, h: .85 };
+const raw = { raw: true };
+T.box(BIN.x0, BIN.x1, F, F + BIN.h, BIN.z0, BIN.z0 + .1, CHAR, raw); T.box(BIN.x0, BIN.x1, F, F + BIN.h, BIN.z1 - .1, BIN.z1, CHAR, raw);
+T.box(BIN.x0, BIN.x0 + .1, F, F + BIN.h, BIN.z0 + .1, BIN.z1 - .1, CHAR, raw); T.box(BIN.x1 - .1, BIN.x1, F, F + BIN.h, BIN.z0 + .1, BIN.z1 - .1, CHAR, raw);
+T.box(BIN.x0, BIN.x1, F + BIN.h - .06, F + BIN.h, BIN.z1 - .13, BIN.z1 + .03, COPPER_D, { collide: false, raw: true });
+T.box(BIN.x0 - .03, BIN.x0 + .13, F + BIN.h - .06, F + BIN.h, BIN.z0, BIN.z1, COPPER_D, { collide: false, raw: true });
+T.box(BIN.x1 - .13, BIN.x1 + .03, F + BIN.h - .06, F + BIN.h, BIN.z0, BIN.z1, COPPER_D, { collide: false, raw: true });
+T.box(BIN.x0 + .1, BIN.x1 - .1, F, F + .05, BIN.z0 + .1, BIN.z1 - .1, C('#241f1c'), { collide: false, raw: true });
+// 공구 상자 (반대쪽)
+T.box(1.4, 2.3, F, F + .55, 1.7, 2.16, IRON_D, raw); T.box(1.4, 2.3, F + .55, F + .6, 1.68, 2.18, COPPER_D, { collide: false, raw: true });
+T.box(2.85, 2.95, F, F + 2.3, 1.2, 1.3, CHAR);                                                        // 랜턴 기둥
+T.box(2.75, 3.05, F + 2.2, F + 2.5, 1.15, 1.4, GLOWC, { collide: false, kind: 'glow' });
+export const tenderCar = finishCar(T, -3, 3, [-2.1, -1.0, 1.0, 2.1], '연료차');
+tenderCar.enclosed = false;
+export const FUEL_BIN = BIN;                // 연료 상자 범위 (연료차 로컬, z 는 확장 전 기준)
+
+/* 3) 숙소칸 */
+const K = new CarB();
+K.base(-3.5, 3.5, ['front']);
+K.sideWall(1.64, -3.5, 3.5, [[-.5, .5]], IRON); K.sideWall(-1.64, -3.5, 3.5, [[-.5, .5]], IRON);
+K.endWall(3.5, IRON); K.endWall(-3.5, IRON);
+K.roof(-3.5, 3.5, IRON_D);
+K.box(-3.3, -1.0, F, F + .5, -1.58, -.8, CHAR2);                                                     // 침대
+K.box(-3.25, -2.7, F + .5, F + .62, -1.5, -.88, C('#cfc6b8'), { collide: false });
+K.box(-2.6, -1.05, F + .5, F + .56, -1.58, -.8, C('#5b6b7a'), { collide: false });
+K.box(1.6, 2.4, F, F + .6, 1.0, 1.58, IRON_D);                                                       // 상자 탁자
+K.box(1.85, 2.05, F + .6, F + .8, 1.25, 1.45, GLOWC, { collide: false, kind: 'glow' });
+K.box(-.15, .15, F + 2.15, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
+export const cabinCar = finishCar(K, -3.5, 3.5, [-2.5, -1.4, 1.4, 2.5], '숙소칸');
+cabinCar.enclosed = true;
+
+locoCar.off = 0; tenderCar.off = 4 + .72 + 3; cabinCar.off = tenderCar.off + 3 + .72 + 3.5;
+export const spawnCar = cabinCar;           // 시작·안전줄 복귀 지점
 
 /* 조명 */
 export const headLight = new THREE.SpotLight(0xffe2a8, 0, 90, .45, .6, 1.2);
-headLight.position.set(4.3, F + 2.35, 0); locoCar.g.add(headLight, headLight.target); headLight.target.position.set(25, 0, 0);
-export const lamps = [[locoCar, -.4, F + .6, 0, 0xff8a3c], [workCar, 0, F + 2.0, 0, 0xffc870], [gardenCar, 3.6, F + 2.3, -1.3 - WIDEN, 0xffc870], [coachCar, 0, F + 2.0, 0, 0xffc870]]
-  .map(([car, x, y, z, c]) => { const l = new THREE.PointLight(c, 0, 10, 2); l.position.set(x, y, z); car.g.add(l); return l; });
+headLight.position.set(3.7, F + 2.05, 0); locoCar.g.add(headLight, headLight.target); headLight.target.position.set(25, 0, 0);
+export const lamps = [[locoCar, -.4, F + .6, 0, 0xff7a30, 4], [tenderCar, 2.9, F + 2.3, 1.25 + WIDEN, 0xffc870, 0], [cabinCar, 0, F + 2.0, 0, 0xffc870, 5]]
+  .map(([car, x, y, z, c, dayI]) => { const l = new THREE.PointLight(c, 0, 10, 2); l.position.set(x, y, z); l.userData.dayI = dayI; car.g.add(l); return l; });
 
-/* 객차 사이 주름막 (시각 전용) */
-const bellowsGeo = merged([0, 1, 2, 3, 4].flatMap(i => {
-  const col = i % 2 ? C('#1f1d24') : DARK, x = -.35 + i * .175, inset = (i % 2) * .06;
-  return [prep(new THREE.BoxGeometry(.18, 2.3, .06), col, M(x, 0, .75 - inset)), prep(new THREE.BoxGeometry(.18, 2.3, .06), col, M(x, 0, -.75 + inset)), prep(new THREE.BoxGeometry(.18, .06, 1.56), col, M(x, 1.15 - inset, 0))];
-}));
-const bellows = [[locoCar, workCar], [workCar, gardenCar], [gardenCar, coachCar]].map(([a, b]) => {
-  const m = new THREE.Mesh(bellowsGeo, landMat); scene.add(m); return { a, b, m, enclosed: b !== gardenCar && a !== gardenCar };
-});
-const _pa = new THREE.Vector3(), _pb = new THREE.Vector3();
-function placeBellows() {
-  for (const B of bellows) {
-    B.a.g.localToWorld(_pa.set(B.a.x0, F + 1.15, 0)); B.b.g.localToWorld(_pb.set(B.b.x1, F + 1.15, 0));
-    B.m.position.addVectors(_pa, _pb).multiplyScalar(.5);
-    B.m.quaternion.copy(B.a.g.quaternion).slerp(B.b.g.quaternion, .5);
-    B.m.scale.set(Math.max(.2, _pa.distanceTo(_pb) / .7), 1, 1);
-    B.m.visible = B.enclosed;
-  }
-}
+/* 객차 사이 주름막: 양쪽이 모두 막힌 차량일 때만 (시작 기차엔 없음) */
+const bellows = [];
+function placeBellows() {}
 
 /* 위치 갱신 */
 export function placeTrain() {

@@ -6,7 +6,7 @@ import { RAIL_JOINT, BL, QUALITY } from './config.js';
 import { arcScale, trackPos, shuffleOrder } from './track.js';
 import { renderer, scene, camera, sky, stars, sunSprite, moonSprite, sun, moon, updateSea, applyQuality } from './scene.js';
 import { updateChunks, processQueue, resetWorld, animateWorld, updatePickups, queueLength, taken, removeItem } from './world.js';
-import { placeTrain, gardenCar, toTrainCoord, trainToWorld, HALF_W } from './train.js';
+import { placeTrain, toTrainCoord, trainToWorld, HALF_W } from './train.js';
 import { player, updatePlayer, updateCamera, updateAvatar, playerWorld, reelIn } from './player.js';
 import { updateEnv, sunDir, setBiomeListener } from './env.js';
 import { updateWeather } from './weather.js';
@@ -84,7 +84,7 @@ const handlers = {
   },
   faster() { const was = S.targetSpeed; S.targetSpeed = Math.min(40, S.targetSpeed + 4); if (was === 0) { whistle(); smokeBurst(10); } controlChanged(); },
   slower() { S.targetSpeed = Math.max(0, S.targetSpeed - 4); controlChanged(); },
-  reelIn() { reelIn(); toast('안전줄을 감아 작업실로 돌아왔어요'); },
+  reelIn() { reelIn(); toast('안전줄을 감아 숙소칸으로 돌아왔어요'); },
   toggleMute() { setMuted(!S.muted); setMuteLabel(); },
   snap() { snap = true; },
   applyQuality(q) { applyQuality(q); },
@@ -138,7 +138,7 @@ function frame() {
   syncTrain(dt);
   const travelled = S.sTrain - before;
 
-  const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car !== gardenCar;
+  const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car.enclosed;
   const joint = Math.floor(S.sTrain / RAIL_JOINT);
   if (joint !== lastJoint) { lastJoint = joint; clack(S.speed, player.inGrav); if (player.inGrav && player.grounded && S.speed > 2) S.shake = Math.max(S.shake, Math.min(.03, S.speed * .0012)); }
   chuffAcc += Math.max(0, travelled); if (chuffAcc > 3.14) { chuffAcc %= 3.14; chuff(S.speed); }

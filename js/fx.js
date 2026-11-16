@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { C, prep, M, merged, landMat, glowMat } from './geo.js';
 import { trackPos } from './track.js';
 import { scene, camera } from './scene.js';
-import { locoCar } from './train.js';
+import { locoCar, CHIMNEY } from './train.js';
 import { F, ITEM_NAMES } from './config.js';
 import { S } from './state.js';
 
@@ -15,7 +15,6 @@ for (let i = 0; i < 56; i++) {
   p.visible = false; p.userData = { life: 0, max: 1, vy: 0, sx: 0, big: 1 }; scene.add(p); smoke.push(p);
 }
 let acc = 0, idx = 0;
-const CHIMNEY = new THREE.Vector3(2.8, F + 3.9, 0);
 function spawnPuff(big = 1) {
   const p = smoke[idx++ % smoke.length], u = p.userData;
   p.position.copy(CHIMNEY).applyMatrix4(locoCar.g.matrixWorld);
