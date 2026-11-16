@@ -192,7 +192,7 @@ function frame() {
   moon.position.copy(_P).addScaledVector(sunDir, -220); moon.target.position.copy(_P);
   updateSea(false); animateWorld(S.time, dt); updateSmoke(dt); updateWhale(dt); updateWeather(dt); updateFx(dt); PM('anim');
   updateAudio(!player.inGrav, inside);
-  if (!NO_RENDER) { renderer.render(scene, camera); renderViewmodel(renderer); } PM('render');
+  if (!NO_RENDER) { renderer.info.autoReset = false; renderer.info.reset(); renderer.render(scene, camera); renderViewmodel(renderer); } PM('render');
   updateHUD(dt); PM('hud'); PE();
 }
 placeTrain();

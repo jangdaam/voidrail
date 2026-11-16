@@ -39,6 +39,10 @@
   #hp.low #hpfill{background:linear-gradient(90deg,#e0452e,#f07a3a)}
   #raidbar{position:fixed;left:50%;top:14px;transform:translateX(-50%);background:rgba(120,30,60,.75)}
   .float.dmg{color:#ffd76a;font-size:20px}
+  /* 평소 화면: 체력·퀵슬롯·조준점·상호작용 안내만 */
+  body:not(.dbg) #mode, body:not(.dbg) #inv, body:not(.dbg) #boil, body:not(.dbg) #ui, body:not(.dbg) #raidbar, body:not(.dbg) #mp{display:none !important}
+  body:not(.dbg) #hotbar{bottom:18px}
+  body:not(.dbg) #hp{bottom:36px}
   #floats{position:fixed;inset:0;pointer-events:none;overflow:hidden}
   .float{position:absolute;left:0;top:0;font-weight:800;font-size:16px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.4);white-space:nowrap}
   #resume{position:fixed;left:50%;top:64%;transform:translateX(-50%);cursor:pointer}
@@ -91,7 +95,7 @@
 <div id="boil" class="pill"></div>
 <div id="floats"></div>
 <div id="debug" hidden></div>
-<div id="resume" class="pill" hidden>클릭하면 시점 조작을 다시 시작해요 · 지금은 아래 버튼을 누를 수 있어요</div>
+<div id="resume" class="pill" hidden>클릭하면 시점 조작을 다시 시작해요</div>
 <div id="start"><div class="card">
   <h1>Voidrail 3D · 탑승</h1>
   <p>클릭하면 마우스로 시점을 조작합니다 (Esc로 해제).</p>
@@ -105,6 +109,7 @@
     <tr><td>Z / X</td><td>감속 / 가속</td></tr>
     <tr><td>R</td><td>안전줄 감기 (숙소칸으로 복귀)</td></tr>
     <tr><td>V · M</td><td>1인칭↔외부 시점 · 소리 켜기/끄기</td></tr>
+    <tr><td>F3</td><td>디버그 모드 (상태 표시·시드·습격 버튼·같이 타기)</td></tr>
   </table>
   <p class="tip">숙소칸 옆문이나 연료차 난간 틈으로 나가면 무중력 상태가 됩니다. 기차는 화실에 넣은 장작으로 달립니다. 삽(2)으로 연료차 상자에서 장작을 퍼서 기관실 화실에 넣어 압력을 유지하세요. 떠다니는 목재는 갈고리(4)로 끌어와 상자에 채울 수 있어요.</p>
   <button id="go">탑승하기</button>

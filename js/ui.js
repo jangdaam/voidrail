@@ -15,6 +15,7 @@ export function initUI(handlers) {
   H = handlers;
   addEventListener('keydown', e => {
     S.keys[e.code] = true;
+    if (e.code === 'F3') e.preventDefault();          // 브라우저 '찾기' 막기
     if (e.code === 'Space') e.preventDefault();
     if (e.repeat || !S.started) return;
     if (e.code === 'KeyE') interact();
@@ -23,6 +24,7 @@ export function initUI(handlers) {
     if (e.code === 'KeyR') H.reelIn();
     if (e.code === 'KeyV') setView(S.viewMode === 'fp' ? 'ext' : 'fp');
     if (e.code === 'KeyM') H.toggleMute();
+    if (e.code === 'F3' || e.code === 'Backquote') { e.preventDefault(); setDebug(!S.debug); }
   });
   addEventListener('keyup', e => { S.keys[e.code] = false; });
   addEventListener('blur', () => { for (const k in S.keys) S.keys[k] = false; });
@@ -51,7 +53,7 @@ export function initUI(handlers) {
   $('bMute').onclick = () => H.toggleMute();
   $('bRaid').onclick = () => H.raidNow();
   $('resume').onclick = () => tryLock();
-  if (S.debug) $('debug').hidden = false;
+  setDebug(S.debug, true);
   setQuality(S.quality, true);
 }
 function tryLock() {
@@ -69,6 +71,11 @@ export function setQuality(q, silent) {
   S.quality = q; H.applyQuality(q);
   $('bQual').textContent = '품질: ' + QUALITY[q].label;
   if (!silent) toast(`그래픽 품질: ${QUALITY[q].label}`);
+}
+/** 디버그 모드: 상태 표시·버튼·측정 패널. 평소엔 체력과 퀵슬롯만 */
+export function setDebug(on, silent) {
+  S.debug = on; document.body.classList.toggle('dbg', on); $('debug').hidden = !on;
+  if (!silent) toast(on ? '디버그 모드 켜짐 (F3로 끄기)' : '디버그 모드 꺼짐');
 }
 export function setMuteLabel() { $('bMute').textContent = S.muted ? '🔇 소리 꺼짐 (M)' : '🔊 소리 켜짐 (M)'; }
 

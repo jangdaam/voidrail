@@ -15,5 +15,5 @@ export const S = {
   heat: 1, pressure: .6, hp: 100,
   tool: 1,                               // 퀵슬롯 (0 렌치 · 1 삽 · 2 권총 · 3 갈고리)
   shovelLoad: 0,                         // 삽 위 장작 (0 또는 1)
-  debug: location.hash === '#debug',
+  debug: location.hash === '#debug' || new URLSearchParams(location.search).has('debug'),
 };
