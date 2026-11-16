@@ -21,7 +21,7 @@ let H = {};               // { toggleTrain, toast, act(event), flashInv }
 
 /* ---------- 퀵슬롯 UI ---------- */
 const bar = document.createElement('div'); bar.id = 'hotbar';
-bar.innerHTML = TOOLS.map((t, i) => `<div class="slot" data-i="${i}"><b>${t.key}</b><span>${t.name}</span></div>`).join('');
+bar.innerHTML = TOOLS.map((t, i) => `<div class="slot" data-i="${i}">${t.key}</div>`).join('');
 document.body.appendChild(bar);
 bar.addEventListener('pointerdown', e => { const s = e.target.closest('.slot'); if (s) { selectTool(+s.dataset.i); e.stopPropagation(); } });
 const slotEls = [...bar.children];
