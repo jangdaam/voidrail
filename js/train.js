@@ -227,8 +227,13 @@ K.box(-2.6, -1.05, F + .5, F + .56, -1.58, -.8, C('#5b6b7a'), { collide: false }
 K.box(1.6, 2.4, F, F + .6, 1.0, 1.58, IRON_D);                                                       // 상자 탁자
 K.box(1.85, 2.05, F + .6, F + .8, 1.25, 1.45, GLOWC, { collide: false, kind: 'glow' });
 K.box(-.15, .15, F + 2.15, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
-export const cabinCar = finishCar(K, -3.5, 3.5, [-2.5, -1.4, 1.4, 2.5], '숙소칸');
-cabinCar.enclosed = true;
+// 뒤쪽 전망대 (추적자를 향해 쏘는 자리): 뒷문으로 나가는 지붕 없는 발코니
+K.box(-4.6, -3.5, F - .3, F, -1.7, 1.7, FLOOR);
+K.box(-4.5, -3.6, F - .85, F - .3, -1.2, 1.2, DARK, { collide: false });
+K.railing(-4.6, -4.52, -1.7, 1.7); K.railing(-4.6, -3.56, 1.62, 1.7); K.railing(-4.6, -3.56, -1.7, -1.62);
+K.box(-4.62, -4.5, F + 1, F + 1.25, -.12, .12, COPPER, { collide: false });                          // 난간 위 구리 장식
+export const cabinCar = finishCar(K, -4.6, 3.5, [-2.5, -1.4, 1.4, 2.5], '숙소칸');
+cabinCar.enclosed = true; cabinCar.roofX0 = -3.5;   // 이보다 뒤(발코니)는 지붕 없음
 
 locoCar.off = 0; tenderCar.off = 4 + .72 + 3; cabinCar.off = tenderCar.off + 3 + .72 + 3.5;
 export const spawnCar = cabinCar;           // 시작·안전줄 복귀 지점

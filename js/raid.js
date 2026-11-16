@@ -83,7 +83,7 @@ const _plL = new THREE.Vector3(), _tgt = new THREE.Vector3();
 const toWorld = (local, out) => out.copy(local).applyMatrix4(locoCar.g.matrixWorld);
 const toLocal = (world, out) => out.copy(world).applyMatrix4(locoCar.inv);
 /** 플레이어가 공격받을 수 있는가: 바깥(무중력) 또는 지붕이 없는 칸 */
-const exposed = () => !player.inGrav || !player.car.enclosed;
+export const exposed = () => !player.inGrav || !player.car.enclosed || (player.car.roofX0 !== undefined && player.p.x < player.car.roofX0);
 
 /* ---------- 매 프레임 ---------- */
 export function updateRaid(dt, canSpawn) {
@@ -258,6 +258,7 @@ function updateDebris(dt) {
 
 /* ---------- 고철 조각: 잠깐 떠 있다가 플레이어에게 빨려 옴 ---------- */
 const shards = Array.from({ length: 20 }, () => { const s = new THREE.Mesh(shardGeo, landMat); s.visible = false; s.userData = { p: new THREE.Vector3(), v: new THREE.Vector3(), t: 0 }; scene.add(s); return s; });
+export function dropShards(worldPos, n) { for (let i = 0; i < n; i++) spawnShard(worldPos); }
 function spawnShard(worldPos) {
   const s = shards.find(x => !x.visible); if (!s) return; const u = s.userData;
   toLocal(worldPos, u.p); u.v.set(Math.random() - .5, 1 + Math.random(), Math.random() - .5).multiplyScalar(2.5); u.t = 0; s.visible = true;

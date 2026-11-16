@@ -20,6 +20,7 @@ import { updateInteract } from './interact.js';
 import { initTools, updateTools, renderViewmodel, applyRemoteAct } from './tools.js';
 import { initRaid, updateRaid, updateHealth, startRaid, raid, aliveCount, clearRaid } from './raid.js';
 import { updateFeel, applyKick, timeFactor } from './feel.js';
+import { initChaser, updateChaser, startChase, chaseInfo, chaseState, applyChaseState } from './chaser.js';
 import { makeTransport } from './net/transport.js';
 import { now } from './net/clock.js';
 import { initMPUI, setPeers, setMPStatus } from './mpui.js';
@@ -51,13 +52,13 @@ const netHooks = {
     return snapOut;
   },
   trainToWorld,
-  getTrain: () => ({ s: S.sTrain, speed: S.loading ? 0 : S.speed * timeScale, targetSpeed: S.targetSpeed, tod: S.tod, timeMul: S.timeMul, seed: getSeed(), boiler: boilerState() }),
+  getTrain: () => ({ s: S.sTrain, speed: S.loading ? 0 : S.speed * timeScale, targetSpeed: S.targetSpeed, tod: S.tod, timeMul: S.timeMul, seed: getSeed(), boiler: boilerState(), chase: chaseState() }),
   applyTrain(st, ageMs) {
     const predicted = st.s + st.speed * Math.max(0, ageMs) / 1000 / arcScale(st.s);
     if (st.seed !== getSeed()) { setSeed(st.seed); shuffleOrder(); S.biomeName = ''; S.sTrain = predicted; regenerate(); toast('기관사의 세계로 맞췄어요'); }
     netTrain = { s: st.s, speed: st.speed, at: now() - ageMs };
     if (S.targetSpeed !== st.targetSpeed) S.targetSpeed = st.targetSpeed;
-    applyBoilerState(st.boiler);
+    applyBoilerState(st.boiler); applyChaseState(st.chase);
     S.timeMul = st.timeMul; todTarget = st.tod + (ageMs / 1000) * st.timeMul / 240;
   },
   onControl(ts, by) { const was = S.targetSpeed; S.targetSpeed = ts; if (was === 0 && ts > 0) { whistle(); smokeBurst(10); toast(`${by} 님이 기차를 출발시켰어요`); } else if (ts === 0 && was > 0) toast(`${by} 님이 기차를 세웠어요`); },
@@ -107,6 +108,8 @@ const handlers = {
   newSeed() { if (!hostOnly()) return; setSeed((Math.random() * 1e9) | 0); shuffleOrder(); S.biomeName = ''; regenerate(); },
   joinRoom, leaveRoom,
   raidNow() { if (!hostOnly()) return; if (S.targetSpeed === 0) handlers.toggleTrain(); startRaid(); },
+  chaseNow() { if (!hostOnly()) return; startChase(); },
+  chaseInfo,
   raidInfo: () => ({ active: raid.active, alive: aliveCount() + raid.toSpawn, next: raid.next }),
   netStats: () => session?.connected ? session.stats() : null,
 };
@@ -115,6 +118,7 @@ setBiomeListener((B, idx) => { banner(B.name); setChord(idx); if (S.started && !
 initUI(handlers);
 initTools({ toggleTrain: handlers.toggleTrain, toast, flashInv, act: d => session?.sendAct(d) });
 initRaid({ toast, banner, fade, flashInv });
+initChaser({ toast, banner });
 initMPUI(handlers, params);
 shuffleOrder();
 updateChunks(S.sTrain);
@@ -166,7 +170,7 @@ function frame() {
   syncTrain(dt); PM('train');
   const travelled = S.sTrain - before;
 
-  const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car.enclosed;
+  const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car.enclosed && !(player.p.x < (player.car.roofX0 ?? -1e9));
   const joint = Math.floor(S.sTrain / RAIL_JOINT);
   if (joint !== lastJoint) { lastJoint = joint; clack(S.speed, player.inGrav); if (player.inGrav && player.grounded && S.speed > 2) S.shake = Math.max(S.shake, Math.min(.03, S.speed * .0012)); }
   chuffAcc += Math.max(0, travelled); if (chuffAcc > 3.14) { chuffAcc %= 3.14; chuff(S.speed); }
@@ -180,7 +184,7 @@ function frame() {
   localAvatar.setTool(S.tool, S.shovelLoad);
   updateAvatar(wp, dt);
   updateInteract(); updateTools(dt);
-  updateRaid(dt, !isClient()); updateHealth(dt); PM('tools');
+  updateRaid(dt, !isClient()); updateHealth(dt); updateChaser(dt, !isClient()); PM('tools');
   for (const p of updatePickups(wp, picks)) { S.inv[p.type]++; pickupFx(p.type, p.pos); chime(p.type); flashInv(); session?.sendPick(p.id); }
   session?.update(dt, S.time); PM('pickups');
 

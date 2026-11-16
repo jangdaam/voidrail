@@ -14,6 +14,7 @@ import { buildTool, hookHead, TOOL_IDS } from './toolmodels.js';
 import { sparkAt } from './fx.js';
 import { scoopSnd, stokeSnd, gunSnd, hookSnd, clankSnd, clickSnd, hitThwack } from './audio.js';
 import { rayMite, meleeMites, hitMite } from './raid.js';
+import { rayChaser, hitChaser } from './chaser.js';
 import { feel } from './feel.js';
 
 let H = {};               // { toggleTrain, toast, act(event), flashInv }
@@ -125,11 +126,13 @@ export function useTool() {
     aim(); ray.set(_eye, _f); ray.far = 220;
     const targets = [...CARS.map(c => c.g)]; for (const rec of chunks.values()) targets.push(rec.group);
     const hit = ray.intersectObjects(targets, true).find(h => h.distance > .4);
-    const mh = rayMite(_eye, _f, hit ? hit.distance : 220);
-    const end = mh ? mh.point : hit ? hit.point : _v.copy(_eye).addScaledVector(_f, 220);
+    let mh = rayMite(_eye, _f, hit ? hit.distance : 220);
+    const ch = rayChaser(_eye, _f, mh ? mh.dist : hit ? hit.distance : 220); if (ch) mh = null;
+    const end = ch ? ch.point : mh ? mh.point : hit ? hit.point : _v.copy(_eye).addScaledVector(_f, 220);
     handWorld(_hand); tracerGeo.attributes.position.array.set([_hand.x, _hand.y, _hand.z, end.x, end.y, end.z]); tracerGeo.attributes.position.needsUpdate = true;
     tracer.visible = true; tracerT = .08; tracer.material.opacity = 1;
-    if (mh) { sparkAt(mh.point, 0xb98cff, 10, 3); hitMite(mh.mite, 1, _f, mh.point); }
+    if (ch) hitChaser(1, ch.point);
+    else if (mh) { sparkAt(mh.point, 0xb98cff, 10, 3); hitMite(mh.mite, 1, _f, mh.point); }
     else if (hit) sparkAt(hit.point, hit.object.userData.item ? 0xffe0a0 : 0xd9e2ea, 8, 2.5);
     return true;
   }

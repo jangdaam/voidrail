@@ -64,6 +64,20 @@ export const RAID = {
   hpMax: 100, regen: 4, regenDelay: 5,
 };
 
+/* 추적자 (선로 포식자) — 거리 단위 m, 속도 m/s. 기차 최고 속도는 BOILER.vmax(40) */
+export const CHASE = {
+  firstDelay: 210,              // 출발 후 첫 추적까지 (초)
+  intervalMin: 220, intervalMax: 340,
+  startGap: 400,                // 나타날 때 맨 뒤 칸과의 거리
+  speed0: 14, accel: .3, speedMax: 22,    // 처음 속도 → 점점 빨라짐. 불을 잘 때면 기차는 ~26m/s 를 유지, 모아 둔 압력으로 순간 40m/s
+  loseGap: 560,                 // 이만큼 벌어지면 포기
+  maxTime: 120,                 // 이 시간이 지나면 지쳐서 돌아감
+  ramGap: 3, knockback: 45,     // 들이받는 거리, 들이받은 뒤 튕겨나는 거리
+  ramPressure: .28, ramDamage: 22,
+  hp: 14, headR: 2.1, hitPush: 3.5,      // 권총 한 발마다 뒤로 밀림
+  dropScrap: 5,
+};
+
 /* 도구 퀵슬롯 */
 export const TOOLS = [
   { id: 'wrench', name: '렌치', key: '1', hint: '고장 난 곳 수리 (다음 단계)' },

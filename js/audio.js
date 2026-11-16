@@ -80,6 +80,19 @@ export function chitter(n = 1) { if (!ctx) return; for (let i = 0; i < 4 * n; i+
 export function chew() { if (!ctx) return; noiseBurst(1600, 3, .09, .09); tone(300 + Math.random() * 120, .07, .05, 'square'); }
 export function raidHorn() { if (!ctx) return; for (const [f, w] of [[196, 0], [185, .55], [196, 1.1]]) { tone(f, .5, .12, 'sawtooth', w); tone(f * 1.5, .5, .05, 'sawtooth', w); } }
 export function raidClear() { if (!ctx) return; [523, 659, 784, 1047].forEach((f, i) => tone(f, .5, .07, 'triangle', i * .1)); }
+/* 추적자 */
+let rumbleSrc = null, rumbleGain = null;
+export function setRumble(level) {
+  if (!ctx) return;
+  if (!rumbleSrc) {
+    rumbleSrc = ctx.createBufferSource(); rumbleSrc.buffer = noiseBuf; rumbleSrc.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 160;
+    rumbleGain = ctx.createGain(); rumbleGain.gain.value = 0; rumbleSrc.connect(f).connect(rumbleGain).connect(master); rumbleSrc.start();
+  }
+  rumbleGain.gain.setTargetAtTime(level * .55, ctx.currentTime, .3);
+}
+export function chaseRoar(v = 1) { if (!ctx) return; tone(70, 1.1, .2 * v, 'sawtooth', 0, .6); tone(104, .9, .12 * v, 'sawtooth', .05, .7); noiseBurst(300, .6, 1.0, .18 * v, 'lowpass'); }
+export function ramCrash() { if (!ctx) return; noiseBurst(200, .5, .8, .6, 'lowpass'); tone(55, .7, .4, 'square', 0, .5); noiseBurst(2600, 1, .4, .15, 'bandpass', .05); }
 export function biomeSting() { if (!ctx) return; const ch = BIOMES[S.biomeIdx].chord; ch.forEach((f, i) => tone(f * 2, 1.6, .05, 'sine', i * .18)); }
 /** 매 프레임: 속도·무중력 여부에 따라 바람, 밤에 패드 필터 낮춤 */
 export function updateAudio(inVoid, inside) {

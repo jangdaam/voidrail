@@ -43,6 +43,13 @@
   body:not(.dbg) #mode, body:not(.dbg) #inv, body:not(.dbg) #boil, body:not(.dbg) #ui, body:not(.dbg) #raidbar, body:not(.dbg) #mp{display:none !important}
   body:not(.dbg) #hotbar{bottom:18px}
   body:not(.dbg) #hp{bottom:36px}
+  #chase{position:fixed;left:50%;top:16px;transform:translateX(-50%);width:260px;text-align:center;font-size:13px;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+  #chase .track{position:relative;height:6px;margin-top:5px;border-radius:3px;background:rgba(10,12,24,.5)}
+  #chase .track b{position:absolute;right:-14px;top:-9px;font-size:15px}
+  #chase .track i{position:absolute;top:-4px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:#ff5ad1;box-shadow:0 0 8px #ff5ad1;transform:translateX(0);right:auto}
+  body.dbg #chase{top:58px}
+  #chase.near #chaseTxt{color:#ff7a7a;animation:blink .5s infinite alternate}
+  @keyframes blink{to{opacity:.4}}
   #floats{position:fixed;inset:0;pointer-events:none;overflow:hidden}
   .float{position:absolute;left:0;top:0;font-weight:800;font-size:16px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.4);white-space:nowrap}
   #resume{position:fixed;left:50%;top:64%;transform:translateX(-50%);cursor:pointer}
@@ -89,6 +96,7 @@
 <div id="vign"></div>
 <div id="hp"><div id="hpfill"></div><span>체력</span></div>
 <div id="raidbar" class="pill" hidden></div>
+<div id="chase" hidden><span id="chaseTxt"></span><div class="track"><i id="chaseDot"></i><b>🚂</b></div></div>
 <div id="prompt"></div>
 <div id="mode" class="pill"></div>
 <div id="inv" class="pill"></div>
@@ -111,7 +119,7 @@
     <tr><td>V · M</td><td>1인칭↔외부 시점 · 소리 켜기/끄기</td></tr>
     <tr><td>F3</td><td>디버그 모드 (상태 표시·시드·습격 버튼·같이 타기)</td></tr>
   </table>
-  <p class="tip">숙소칸 옆문이나 연료차 난간 틈으로 나가면 무중력 상태가 됩니다. 기차는 화실에 넣은 장작으로 달립니다. 삽(2)으로 연료차 상자에서 장작을 퍼서 기관실 화실에 넣어 압력을 유지하세요. 떠다니는 목재는 갈고리(4)로 끌어와 상자에 채울 수 있어요.</p>
+  <p class="tip">숙소칸 뒤 전망대에서는 뒤쫓아 오는 것을 쏠 수 있어요. 숙소칸 옆문이나 연료차 난간 틈으로 나가면 무중력 상태가 됩니다. 기차는 화실에 넣은 장작으로 달립니다. 삽(2)으로 연료차 상자에서 장작을 퍼서 기관실 화실에 넣어 압력을 유지하세요. 떠다니는 목재는 갈고리(4)로 끌어와 상자에 채울 수 있어요.</p>
   <button id="go">탑승하기</button>
 </div></div>
 <div id="mp" hidden>
@@ -130,7 +138,7 @@
     <span class="stat" id="sBiome">-</span><span class="stat" id="sDist">-</span><span class="stat" id="sSpeed">-</span><span class="stat" id="sTime">-</span>
   </div>
   <div class="row">
-    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bNext">다음 지역 ⏭</button><button id="bTime">시간 ×1</button><button id="bSeed">새 시드</button><button id="bRaid">습격 ⚔</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
+    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bNext">다음 지역 ⏭</button><button id="bTime">시간 ×1</button><button id="bSeed">새 시드</button><button id="bRaid">습격 ⚔</button><button id="bChase">추적 🐛</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
   </div>
 </div>
 <div id="fade" class="on">세계를 만드는 중…</div>

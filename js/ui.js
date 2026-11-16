@@ -52,6 +52,7 @@ export function initUI(handlers) {
   $('bQual').onclick = () => { autoQuality = false; setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(S.quality) + 1) % 3]); };
   $('bMute').onclick = () => H.toggleMute();
   $('bRaid').onclick = () => H.raidNow();
+  $('bChase').onclick = () => H.chaseNow();
   $('resume').onclick = () => tryLock();
   setDebug(S.debug, true);
   setQuality(S.quality, true);
@@ -114,6 +115,8 @@ export function updateHUD(dt) {
   $('boil').textContent = `🔥 불 ${Math.round(S.heat * 100)}% · 압력 ${Math.round(S.pressure * 100)}%`;
   $('boil').classList.toggle('low', S.pressure < .3);
   $('hpfill').style.width = S.hp + '%'; $('hp').classList.toggle('low', S.hp < 35);
+  const CH = H.chaseInfo?.(); $('chase').hidden = !CH;
+  if (CH) { const g = Math.max(0, CH.gap); $('chaseTxt').textContent = `뒤 ${Math.round(g)}m`; $('chaseDot').style.left = (100 - Math.min(100, g / 5.6)) + '%'; $('chase').classList.toggle('near', g < 90); }
   const R = H.raidInfo?.(); $('raidbar').hidden = !R?.active; if (R?.active) $('raidbar').textContent = `⚠ 습격 중 · 공허 진드기 ${R.alive}마리`;
   $('cross').style.display = S.viewMode === 'fp' && S.started ? 'block' : 'none';
   if (S.debug) {
