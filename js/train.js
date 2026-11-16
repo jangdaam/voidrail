@@ -11,11 +11,18 @@ const RED = C('#c9503a'), GOLD = C('#f2c14e'), DARK = C('#2e2b34'), WOOD = C('#9
   TEAL = C('#2f8f9d'), MUST = C('#d39b3a'), CREAM = C('#f3e6cc'), GLOWC = C('#ffd98a'), FIRE = C('#ff7a2e'), STONE = C('#5b5560'), CEIL = C('#e6d2ae');
 const RAIL_H = 1.25;   // 난간 충돌 높이 (점프로 못 넘음, 시각 난간은 1.0)
 
+/* 차량 폭 확장: 아래 부품 정의는 원래 폭(바깥 반폭 1.7m) 기준 좌표로 적혀 있고,
+ * 중심선에서 ZT 보다 바깥의 z 좌표는 WIDEN 만큼 일괄로 밀어낸다 → 실내 폭 3.2m → 4.4m.
+ * 문·선로·보일러처럼 중앙에 있는 것은 그대로. 최종 좌표로 직접 적을 땐 { raw: true }. */
+export const WIDEN = .6, ZT = 1.1, HALF_W = 1.7 + WIDEN;     // HALF_W: 바닥 바깥 반폭
+const zmap = z => Math.abs(z) > ZT + 1e-6 ? z + Math.sign(z) * WIDEN : z;
+
 class CarB {
   constructor() { this.solid = []; this.glow = []; this.glass = []; this.boxes = []; this.vis = []; }
   /** 시각 상자는 바로 만들지 않고 기록 → build() 에서 겹친 면 정리 후 생성 */
   box(x0, x1, y0, y1, z0, z1, col, o = {}) {
-    const { collide = true, visual = true, kind = 'solid' } = o;
+    const { collide = true, visual = true, kind = 'solid', raw = false } = o;
+    if (!raw) { z0 = zmap(z0); z1 = zmap(z1); }
     if (visual) this.vis.push({ min: [x0, y0, z0], max: [x1, y1, z1], col, kind });
     if (collide) this.boxes.push({ min: [x0, y0, z0], max: [x1, y1, z1] });
   }
@@ -56,7 +63,10 @@ class CarB {
     }
     return fixed;
   }
-  add(geo, col, m, kind = 'solid') { this[kind].push(prep(geo, col, m)); }
+  add(geo, col, m, kind = 'solid', raw = false) {
+    if (m && !raw) m.elements[14] = zmap(m.elements[14]);       // 위치(z)만 확장, 모양은 그대로
+    this[kind].push(prep(geo, col, m));
+  }
   base(x0, x1, plates) {
     this.box(x0, x1, F - .3, F, -1.7, 1.7, FLOOR);
     this.box(x0 + .4, x1 - .4, F - .85, F - .3, -1.2, 1.2, DARK, { collide: false });
@@ -103,9 +113,10 @@ class CarB {
         this.box(a, b, F + .92, F + 1, z0, z1, DARK, { collide: false }); this.box(a, b, F + .45, F + .5, z0, z1, DARK, { collide: false });
         for (let i = 0; i <= n; i++) { const x = a + (b - a) * i / n; this.box(x - .04, x + .04, F, F + 1, z0, z1, DARK, { collide: false }); }
       } else {
-        this.box(x0, x1, F, F + RAIL_H, a, b, DARK, { visual: false });
-        this.box(x0, x1, F + .92, F + 1, a, b, DARK, { collide: false });
-        for (let i = 0; i <= n; i++) { const z = a + (b - a) * i / n; this.box(x0, x1, F, F + 1, z - .04, z + .04, DARK, { collide: false }); }
+        const za = zmap(a), zb = zmap(b), nz = Math.max(1, Math.ceil((zb - za) / 1.2));   // 넓힌 뒤 기둥을 고르게
+        this.box(x0, x1, F, F + RAIL_H, za, zb, DARK, { visual: false, raw: true });
+        this.box(x0, x1, F + .92, F + 1, za, zb, DARK, { collide: false, raw: true });
+        for (let i = 0; i <= nz; i++) { const z = za + (zb - za) * i / nz; this.box(x0, x1, F, F + 1, z - .04, z + .04, DARK, { collide: false, raw: true }); }
       }
     }
   }
@@ -141,9 +152,9 @@ L.roof(-4.5, -.7);
 L.box(-.68, -.62, F + .3, F + .95, -.38, .38, FIRE, { collide: false, kind: 'glow' });
 L.box(-.68, -.62, F + 1.75, F + 2.0, -.6, -.35, GLOWC, { collide: false, kind: 'glow' });
 L.box(-.68, -.62, F + 1.75, F + 2.0, .35, .6, GLOWC, { collide: false, kind: 'glow' });
-L.box(-4.3, -3.6, F, F + .5, .95, 1.55, WOOD);
-L.box(-4.4, -3.3, F, F + .9, -1.58, -.6, DARK);
-L.add(new THREE.DodecahedronGeometry(.45, 0), C('#232027'), M(-3.85, F + .95, -1.1, 0, 0, 0, 1.2, .5, 1));
+L.box(-4.3, -3.6, F, F + .5, 1.6, 2.18, WOOD, { raw: true });                          // 기관사 의자
+L.box(-4.4, -3.3, F, F + .9, -2.18, -1.2, DARK, { raw: true });                        // 석탄통
+L.add(new THREE.DodecahedronGeometry(.45, 0), C('#232027'), M(-3.85, F + .95, -1.69, 0, 0, 0, 1.2, .5, 1), 'solid', true);
 L.add(new THREE.CylinderGeometry(1.05, 1.05, 4.4, 10), RED, M(1.5, F + 1.15, 0, 0, 0, Math.PI / 2));
 for (const x of [.3, 1.5, 2.7]) L.add(new THREE.CylinderGeometry(1.09, 1.09, .14, 10), GOLD, M(x, F + 1.15, 0, 0, 0, Math.PI / 2));
 L.add(new THREE.CylinderGeometry(.95, .95, .3, 10), DARK, M(3.8, F + 1.15, 0, 0, 0, Math.PI / 2));
@@ -168,19 +179,19 @@ const Wk = new CarB();
 Wk.base(-4.5, 4.5, ['front', 'rear']);
 Wk.sideWall(1.64, -4.5, 4.5, [[-.7, .7]], MUST); Wk.sideWall(-1.64, -4.5, 4.5, [[-.7, .7]], MUST);
 Wk.endWall(-4.5, MUST); Wk.endWall(4.5, MUST); Wk.roof(-4.5, 4.5);
-Wk.box(-3.7, -1.2, F, F + .9, 1.0, 1.58, WOOD);
-Wk.box(-3.4, -3.0, F + .9, F + 1.15, 1.15, 1.45, C('#6b7a86'), { collide: false });
-Wk.box(-2.4, -1.6, F + .9, F + 1.0, 1.1, 1.5, C('#7c858f'), { collide: false });
-Wk.add(new THREE.CylinderGeometry(.06, .06, .5, 5), C('#c27b46'), M(-2.0, F + 1.0, 1.25, 0, 0, Math.PI / 2));
+Wk.box(-3.7, -1.2, F, F + .9, 1.6, 2.18, WOOD, { raw: true });                         // 작업대
+Wk.box(-3.4, -3.0, F + .9, F + 1.15, 1.75, 2.05, C('#6b7a86'), { collide: false, raw: true });
+Wk.box(-2.4, -1.6, F + .9, F + 1.0, 1.7, 2.1, C('#7c858f'), { collide: false, raw: true });
+Wk.add(new THREE.CylinderGeometry(.06, .06, .5, 5), C('#c27b46'), M(-2.0, F + 1.0, 1.85, 0, 0, Math.PI / 2), 'solid', true);
 Wk.box(1.2, 3.9, F, F + 2.0, -1.58, -1.15, WOOD, { visual: false });
 // 선반: 뒤판은 창틀(벽 안쪽 -1.53)보다 확실히 안쪽에 두고, 선반널·물건은 판 사이에 끼움
 Wk.box(1.2, 3.9, F, F + 2.0, -1.5, -1.45, WOOD, { collide: false }); Wk.box(1.2, 1.27, F, F + 2.0, -1.45, -1.15, WOOD, { collide: false }); Wk.box(3.83, 3.9, F, F + 2.0, -1.45, -1.15, WOOD, { collide: false });
 for (const y of [.08, .65, 1.3, 1.95]) Wk.box(1.27, 3.83, F + y - .05, F + y, -1.45, -1.17, C('#7a5233'), { collide: false });
 for (let i = 0; i < 6; i++) Wk.box(1.4 + i * .42, 1.7 + i * .42, F + .652 + (i % 3) * .65, F + .9 + (i % 3) * .65, -1.42, -1.22, [C('#5fa8d3'), C('#e07a5f'), C('#81b29a'), C('#f2cc8f')][i % 4], { collide: false });
-Wk.box(-4.3, -3.2, F, F + 1.3, -1.58, -.8, STONE);
-Wk.box(-3.95, -3.55, F + .25, F + .7, -.78, -.72, FIRE, { collide: false, kind: 'glow' });
+Wk.box(-4.3, -3.2, F, F + 1.3, -2.18, -1.4, STONE, { raw: true });                     // 화로
+Wk.box(-3.95, -3.55, F + .25, F + .7, -1.38, -1.32, FIRE, { collide: false, kind: 'glow', raw: true });
 Wk.add(new THREE.CylinderGeometry(.15, .15, 1.4, 6), STONE, M(-3.75, F + 2.0, -1.2));
-Wk.box(2.5, 3.3, F, F + .8, .85, 1.58, C('#b9874f')); Wk.box(3.4, 4.2, F, F + .6, 1.0, 1.58, C('#c8955a')); Wk.box(2.7, 3.2, F + .8, F + 1.3, 1.0, 1.5, C('#a8763f'));
+Wk.box(2.5, 3.3, F, F + .8, 1.45, 2.18, C('#b9874f'), { raw: true }); Wk.box(3.4, 4.2, F, F + .6, 1.6, 2.18, C('#c8955a'), { raw: true }); Wk.box(2.7, 3.2, F + .8, F + 1.3, 1.6, 2.1, C('#a8763f'), { raw: true });
 Wk.box(-.15, .15, F + 2.15, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
 Wk.box(-.02, .02, F + 2.45, F + 2.52, -.02, .02, DARK, { collide: false });
 Wk.box(-.9, .9, F, F + .035, -.5, .5, C('#3f7cac'), { collide: false });   // 러그
@@ -233,7 +244,7 @@ Co.box(-2.7, -.7, F + 1.7, F + 1.77, -1.58, -.75, C('#5fa8d3'), { collide: false
 Co.box(1.6, 2.6, F, F + .75, .6, 1.58, WOOD); Co.box(2.8, 3.4, F, F + .45, .7, 1.58, C('#7a5233')); Co.box(.8, 1.4, F, F + .45, .7, 1.58, C('#7a5233'));
 Co.box(-2.5, 3, F, F + .035, -.6, .6, C('#a34d5c'), { collide: false });
 Co.box(-.15, .15, F + 2.15, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
-Co.box(2.0, 2.2, F + .75, F + .95, 1.0, 1.2, GLOWC, { collide: false, kind: 'glow' });
+Co.box(2.0, 2.2, F + .75, F + .95, 1.7, 1.9, GLOWC, { collide: false, kind: 'glow', raw: true });
 export const coachCar = finishCar(Co, -4.5, 4.5, bogie(-4.5, 4.5), '객실');
 
 locoCar.off = 0; workCar.off = 9.72; gardenCar.off = 9.72 + 4.5 + .72 + 4; coachCar.off = gardenCar.off + 4 + .72 + 4.5;
@@ -241,7 +252,7 @@ locoCar.off = 0; workCar.off = 9.72; gardenCar.off = 9.72 + 4.5 + .72 + 4; coach
 /* 조명 */
 export const headLight = new THREE.SpotLight(0xffe2a8, 0, 90, .45, .6, 1.2);
 headLight.position.set(4.3, F + 2.35, 0); locoCar.g.add(headLight, headLight.target); headLight.target.position.set(25, 0, 0);
-export const lamps = [[locoCar, -.4, F + .6, 0, 0xff8a3c], [workCar, 0, F + 2.0, 0, 0xffc870], [gardenCar, 3.6, F + 2.3, -1.3, 0xffc870], [coachCar, 0, F + 2.0, 0, 0xffc870]]
+export const lamps = [[locoCar, -.4, F + .6, 0, 0xff8a3c], [workCar, 0, F + 2.0, 0, 0xffc870], [gardenCar, 3.6, F + 2.3, -1.3 - WIDEN, 0xffc870], [coachCar, 0, F + 2.0, 0, 0xffc870]]
   .map(([car, x, y, z, c]) => { const l = new THREE.PointLight(c, 0, 10, 2); l.position.set(x, y, z); car.g.add(l); return l; });
 
 /* 객차 사이 주름막 (시각 전용) */

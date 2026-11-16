@@ -198,7 +198,7 @@ function rawPlan(ci) {
   for (let k = 0; k < 10; k++) {
     const s = ci * CH + rng() * CH; frameAt(s, FR); trackPos(s, _P);
     const side = rng() < .5 ? -1 : 1, r = rng(), type = r < .5 ? 'scrap' : r < .85 ? 'wood' : 'crystal';
-    _Q.copy(_P).addScaledVector(FR.R, side * (3.8 + rng() * 12)).addScaledVector(FR.U, -1.5 + rng() * 8);
+    _Q.copy(_P).addScaledVector(FR.R, side * (4.5 + rng() * 12)).addScaledVector(FR.U, -1.5 + rng() * 8);
     const rx = rng() * 6, ry = rng() * 6, spin = .4 + rng();
     if (!overlaps(sph(_Q.x, _Q.y, _Q.z, 1), spheres, 1)) items.push({ id: ci + ':' + k, x: _Q.x, y: _Q.y, z: _Q.z, type, rx, ry, spin });
   }
@@ -235,7 +235,7 @@ function buildTrack(rec) {
     for (let k = 0; k < 2; k++) { _Q.copy(_P).addScaledVector(FR.R, k ? .72 : -.72).addScaledVector(FR.U, .19); _m.copy(FR.m).setPosition(_Q); rl.setMatrixAt(i * 2 + k, _m); }
     if (i % 7 === 3) { _Q.copy(_P).addScaledVector(FR.U, -1.3 - rng()); deco.push(prep(new THREE.DodecahedronGeometry(.9 + rng() * .8, 0), C('#6f6258').offsetHSL(0, 0, (rng() - .5) * .08), M(_Q.x, _Q.y, _Q.z, rng() * 3, rng() * 3, 0, 1.4, .8, 1.2))); }
     if (Math.round(s / STEP) % 25 === 0) {
-      _Q.copy(_P).addScaledVector(FR.R, 2.9);
+      _Q.copy(_P).addScaledVector(FR.R, 3.6);
       deco.push(prep(new THREE.CylinderGeometry(.08, .1, 3, 5), C('#3a3440'), M(_Q.x, _Q.y + 1.3, _Q.z)));
       deco.push(prep(new THREE.BoxGeometry(.5, .08, .5), C('#3a3440'), M(_Q.x, _Q.y + 2.85, _Q.z)));
       decoGlow.push(prep(new THREE.OctahedronGeometry(.28, 0), C('#ffd27a'), M(_Q.x, _Q.y + 2.55, _Q.z)));

@@ -4,7 +4,7 @@ import { clamp } from './noise.js';
 import { C, prep, M, landMat } from './geo.js';
 import { trackPos, frameAt, makeFrame } from './track.js';
 import { scene, camera } from './scene.js';
-import { CARS, workCar } from './train.js';
+import { CARS, workCar, HALF_W } from './train.js';
 import { F } from './config.js';
 import { Avatar } from './avatar.js';
 import { S } from './state.js';
@@ -30,7 +30,7 @@ function resolve(p, v, boxes, st) {
     else { p.z = pz1 < pz2 ? b.max[2] + PR : b.min[2] - PR; v.z = 0; }
   }
 }
-const inGravity = (car, p) => p.x > car.x0 - .8 && p.x < car.x1 + .8 && Math.abs(p.z) < 2.25 && p.y > F - .7 && p.y < F + 7;
+const inGravity = (car, p) => p.x > car.x0 - .8 && p.x < car.x1 + .8 && Math.abs(p.z) < HALF_W + .55 && p.y > F - .7 && p.y < F + 7;
 
 export function updatePlayer(dt) {
   const P = player, car = P.car, K = S.keys;
@@ -53,7 +53,7 @@ export function updatePlayer(dt) {
     P.v.addScaledVector(f, fwdIn * 9 * dt).addScaledVector(r, rightIn * 9 * dt); P.v.y += upIn * 9 * dt;
     P.v.multiplyScalar(Math.exp(-dt * 1.3));
     if (P.v.length() > 7) P.v.setLength(7);
-    const anchor = _l.set(clamp(P.p.x, car.x0, car.x1), F + 1, Math.sign(P.p.z || 1) * 1.7), d = P.p.distanceTo(anchor);
+    const anchor = _l.set(clamp(P.p.x, car.x0, car.x1), F + 1, Math.sign(P.p.z || 1) * HALF_W), d = P.p.distanceTo(anchor);
     if (d > 26) P.v.addScaledVector(_w.subVectors(anchor, P.p).normalize(), (d - 26) * 4 * dt);
     P.bob *= Math.exp(-dt * 8);
   }
@@ -77,10 +77,13 @@ export function updatePlayer(dt) {
   // 가장 가까운 차량을 기준 좌표로
   _w.copy(P.p).applyMatrix4(car.g.matrixWorld);
   let best = car, bestD = 1e9;
-  for (const c of CARS) { _l.copy(_w).applyMatrix4(c.inv); const dx = _l.x < c.x0 ? c.x0 - _l.x : _l.x > c.x1 ? _l.x - c.x1 : 0; const d = dx + Math.max(0, Math.abs(_l.z) - 2) * .2; if (d < bestD - .001) { bestD = d; best = c; } }
+  for (const c of CARS) { _l.copy(_w).applyMatrix4(c.inv); const dx = _l.x < c.x0 ? c.x0 - _l.x : _l.x > c.x1 ? _l.x - c.x1 : 0; const d = dx + Math.max(0, Math.abs(_l.z) - HALF_W - .3) * .2; if (d < bestD - .001) { bestD = d; best = c; } }
   if (best !== car) {
     P.p.copy(_w).applyMatrix4(best.inv);
     P.v.applyQuaternion(car.g.quaternion).applyQuaternion(_q2.copy(best.g.quaternion).invert());
+    // 시선은 '실제로 보던 월드 방향'을 그대로 유지하도록 새 차량 기준으로 환산 (차량 간 각도 차이로 시점이 돌아가지 않게)
+    const look = _a.set(0, 0, -1).applyQuaternion(lookQuat()).applyQuaternion(car.g.quaternion).applyQuaternion(_q2.copy(best.g.quaternion).invert());
+    P.yaw = Math.atan2(-look.x, -look.z); P.pitch = Math.asin(clamp(look.y, -1, 1));
     P.car = best;
   }
   if (P.p.length() > 60 || !Number.isFinite(P.p.x)) reelIn();
@@ -90,7 +93,6 @@ export const playerWorld = (out, h = .9) => out.copy(player.p).setY(player.p.y +
 export const nearLever = (pos) => player.car.name === '기관실' && player.p.distanceTo(pos) < 1.8;
 
 /* 카메라 */
-const baseQuat = new THREE.Quaternion();
 const _cl = new THREE.Vector3(), _shake = new THREE.Vector3();
 export const ext = { yaw: 0, pitch: 0, zoom: 1 };
 const extTarget = new THREE.Vector3(), extWant = new THREE.Vector3(), EF = makeFrame(), _P = new THREE.Vector3();
@@ -99,10 +101,9 @@ export function updateCamera(dt, snap) {
   const sh = S.shake;
   if (S.viewMode === 'fp') {
     const P = player;
-    baseQuat.slerp(P.car.g.quaternion, snap ? 1 : 1 - Math.exp(-dt * 10));
     _cl.set(P.p.x, P.p.y + EYE + Math.sin(P.bob) * .05, P.p.z);
     camera.position.copy(_cl).applyMatrix4(P.car.g.matrixWorld);
-    camera.quaternion.copy(baseQuat).multiply(lookQuat());
+    camera.quaternion.copy(P.car.g.quaternion).multiply(lookQuat());   // 타고 있는 차량과 함께 자연스럽게 회전
   } else {
     const s = S.sTrain - 14; frameAt(s, EF); trackPos(s, _P);
     const yaw = .62 + ext.yaw, pitch = clamp(.25 + ext.pitch, -.3, 1.35), d = 30 * ext.zoom;
@@ -128,7 +129,7 @@ export function updateAvatar(wp, dt) {
   A.update(dt, avState, S.time);
   tether.visible = !player.inGrav;
   if (tether.visible) {
-    const c = player.car, a = _l.set(clamp(player.p.x, c.x0, c.x1), F + 1, Math.sign(player.p.z || 1) * 1.7).applyMatrix4(c.g.matrixWorld);
+    const c = player.car, a = _l.set(clamp(player.p.x, c.x0, c.x1), F + 1, Math.sign(player.p.z || 1) * HALF_W).applyMatrix4(c.g.matrixWorld);
     tetherGeo.attributes.position.array.set([a.x, a.y, a.z, wp.x, wp.y, wp.z]); tetherGeo.attributes.position.needsUpdate = true;
   }
 }

@@ -6,7 +6,7 @@ import { RAIL_JOINT, BL, QUALITY } from './config.js';
 import { arcScale, trackPos, shuffleOrder } from './track.js';
 import { renderer, scene, camera, sky, stars, sunSprite, moonSprite, sun, moon, updateSea, applyQuality } from './scene.js';
 import { updateChunks, processQueue, resetWorld, animateWorld, updatePickups, queueLength, taken, removeItem } from './world.js';
-import { placeTrain, gardenCar, toTrainCoord, trainToWorld } from './train.js';
+import { placeTrain, gardenCar, toTrainCoord, trainToWorld, HALF_W } from './train.js';
 import { player, updatePlayer, updateCamera, updateAvatar, playerWorld, reelIn } from './player.js';
 import { updateEnv, sunDir, setBiomeListener } from './env.js';
 import { updateWeather } from './weather.js';
@@ -138,7 +138,7 @@ function frame() {
   syncTrain(dt);
   const travelled = S.sTrain - before;
 
-  const inside = player.inGrav && Math.abs(player.p.z) < 1.6 && player.car !== gardenCar;
+  const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car !== gardenCar;
   const joint = Math.floor(S.sTrain / RAIL_JOINT);
   if (joint !== lastJoint) { lastJoint = joint; clack(S.speed, player.inGrav); if (player.inGrav && player.grounded && S.speed > 2) S.shake = Math.max(S.shake, Math.min(.03, S.speed * .0012)); }
   chuffAcc += Math.max(0, travelled); if (chuffAcc > 3.14) { chuffAcc %= 3.14; chuff(S.speed); }

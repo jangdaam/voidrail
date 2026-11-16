@@ -1,7 +1,7 @@
 // 지역별 날씨 입자. 카메라 주변 상자에서 순환하며, 기차 실내에 들어간 입자는 숨김
 import * as THREE from 'three';
 import { softTex, camera, scene } from './scene.js';
-import { CARS } from './train.js';
+import { CARS, HALF_W } from './train.js';
 import { WSPEC, QUALITY, F } from './config.js';
 import { S } from './state.js';
 
@@ -47,7 +47,7 @@ export function updateWeather(dt) {
     if (nearTrain && x * x + y * y + z * z < 1600) {
       for (const c of CARS) {
         w.set(cp.x + x, cp.y + y, cp.z + z).applyMatrix4(c.inv);
-        if (w.x > c.x0 - .7 && w.x < c.x1 + .7 && Math.abs(w.z) < 1.9 && w.y > 0 && w.y < F + 2.75 && c.name !== '정원칸') { hide = true; break; }
+        if (w.x > c.x0 - .7 && w.x < c.x1 + .7 && Math.abs(w.z) < HALF_W + .2 && w.y > 0 && w.y < F + 2.75 && c.name !== '정원칸') { hide = true; break; }
       }
     }
     out[o] = hide ? 0 : x; out[o + 1] = hide ? -1e4 : y; out[o + 2] = hide ? 0 : z;
