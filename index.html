@@ -42,6 +42,8 @@
   /* 평소 화면: 체력·퀵슬롯·조준점·상호작용 안내만 */
   body:not(.dbg) #mode, body:not(.dbg) #inv, body:not(.dbg) #boil, body:not(.dbg) #ui, body:not(.dbg) #raidbar, body:not(.dbg) #mp{display:none !important}
   body:not(.dbg) #hotbar{bottom:18px}
+  body:not(.dbg) #prompt{display:none}
+  #cross.target{width:16px;height:16px;margin:-8px 0 0 -8px;background:transparent;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1.5px rgba(0,0,0,.35),inset 0 0 0 1.5px rgba(0,0,0,.25);transition:all .1s}
   body:not(.dbg) #hp{bottom:36px}
   #chase{position:fixed;left:50%;top:16px;transform:translateX(-50%);width:260px;text-align:center;font-size:13px;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.6)}
   #chase .track{position:relative;height:6px;margin-top:5px;border-radius:3px;background:rgba(10,12,24,.5)}
@@ -112,14 +114,15 @@
     <tr><td>Space</td><td>점프 / 무중력에서 위로</td></tr>
     <tr><td>Shift</td><td>무중력에서 아래로</td></tr>
     <tr><td>E</td><td>상호작용 (레버 · 연료 상자 · 화실)</td></tr>
-    <tr><td>1–4 · 휠</td><td>렌치 · 삽 · 권총 · 갈고리</td></tr>
+    <tr><td>H</td><td>도구 꺼내기 / 넣기</td></tr>
+    <tr><td>1–4 · 휠</td><td>렌치 · 삽 · 권총 · 갈고리 (도구를 꺼낸 상태에서)</td></tr>
     <tr><td>좌클릭</td><td>도구 사용 (권총·렌치·삽으로 진드기 공격)</td></tr>
     <tr><td>Z / X</td><td>감속 / 가속</td></tr>
     <tr><td>R</td><td>안전줄 감기 (숙소칸으로 복귀)</td></tr>
     <tr><td>V · M</td><td>1인칭↔외부 시점 · 소리 켜기/끄기</td></tr>
     <tr><td>F3</td><td>디버그 모드 (상태 표시·시드·습격 버튼·같이 타기)</td></tr>
   </table>
-  <p class="tip">숙소칸 뒤 전망대에서는 뒤쫓아 오는 것을 쏠 수 있어요. 숙소칸 옆문이나 연료차 난간 틈으로 나가면 무중력 상태가 됩니다. 기차는 화실에 넣은 장작으로 달립니다. 삽(2)으로 연료차 상자에서 장작을 퍼서 기관실 화실에 넣어 압력을 유지하세요. 떠다니는 목재는 갈고리(4)로 끌어와 상자에 채울 수 있어요.</p>
+  <p class="tip">숙소칸 뒤 전망대에서는 뒤쫓아 오는 것을 쏠 수 있어요. 숙소칸 옆문이나 연료차 난간 틈으로 나가면 무중력 상태가 됩니다. 기차는 화실에 넣은 장작으로 달립니다. H로 도구를 꺼내 삽(2)으로 연료차 상자에서 장작을 퍼서 기관실 화실에 넣어 압력을 유지하세요. 떠다니는 목재는 갈고리(4)로 끌어와 상자에 채울 수 있어요.</p>
   <button id="go">탑승하기</button>
 </div></div>
 <div id="mp" hidden>

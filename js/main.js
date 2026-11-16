@@ -49,7 +49,7 @@ const netHooks = {
     toTrainCoord(player.car, player.p, _tp);
     snapOut.v = _vReal.copy(player.v).multiplyScalar(timeScale);   // 게임 시간 → 실제 시간 기준 속도
     snapOut.yaw = player.yaw; snapOut.pitch = player.pitch;
-    snapOut.flags = (player.grounded ? FLAG_GROUND : 0) | (player.inGrav ? FLAG_GRAV : 0) | (S.keys.ShiftLeft ? FLAG_SPRINT : 0) | toolFlags(S.tool, S.shovelLoad);
+    snapOut.flags = (player.grounded ? FLAG_GROUND : 0) | (player.inGrav ? FLAG_GRAV : 0) | (S.keys.ShiftLeft ? FLAG_SPRINT : 0) | toolFlags(S.tool, S.shovelLoad, S.holstered);
     return snapOut;
   },
   trainToWorld,
@@ -203,7 +203,7 @@ function frame() {
   if (S.started) updatePlayer(dt);
   playerWorld(wp);
   updateCamera(dt, snap); snap = false; applyKick(); PM('player');
-  localAvatar.setTool(S.tool, S.shovelLoad);
+  localAvatar.setTool(S.holstered ? -1 : S.tool, S.shovelLoad);
   updateAvatar(wp, dt);
   updateInteract(); updateTools(dt);
   updateRaid(dt, !isClient()); updateHealth(dt); updateChaser(dt, !isClient()); PM('tools');

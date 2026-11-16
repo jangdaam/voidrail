@@ -3,8 +3,9 @@
 export const SNAP_BYTES = 44;
 export const FLAG_GROUND = 1, FLAG_GRAV = 2, FLAG_SPRINT = 4;
 /* 비트 3–4: 손에 든 도구 번호, 비트 5: 삽에 장작 */
-export const toolFlags = (tool, loaded) => ((tool & 3) << 3) | (loaded ? 32 : 0);
-export const flagTool = f => (f >> 3) & 3, flagLoaded = f => !!(f & 32);
+/* 비트 6: 도구 집어넣음 */
+export const toolFlags = (tool, loaded, holstered) => ((tool & 3) << 3) | (loaded ? 32 : 0) | (holstered ? 64 : 0);
+export const flagTool = f => f & 64 ? -1 : (f >> 3) & 3, flagLoaded = f => !!(f & 32);
 
 export function encodeSnap(seq, t, p, v, yaw, pitch, flags) {
   const buf = new ArrayBuffer(SNAP_BYTES), dv = new DataView(buf);

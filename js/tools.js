@@ -52,7 +52,13 @@ const tracerGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),
 const tracer = new THREE.Line(tracerGeo, new THREE.LineBasicMaterial({ color: 0xffe2a0, transparent: true })); tracer.frustumCulled = false; tracer.visible = false; scene.add(tracer);
 let tracerT = 0;
 
+/** H: 도구 꺼내기/넣기 */
+export function toggleHolster() {
+  S.holstered = !S.holstered; switchT = S.holstered ? 0 : .5; clickSnd();   // 꺼낼 땐 아래에서 올라오기만
+  if (S.holstered && hook.phase !== 'idle') hook.phase = 'back';
+}
 export function selectTool(i) {
+  if (S.holstered) return;
   i = ((i % 4) + 4) % 4; if (i === S.tool) return;
   S.tool = i; switchT = 0; clickSnd();
   if (hook.phase !== 'idle' && i !== 3) hook.phase = 'back';
@@ -72,6 +78,7 @@ export function initTools(hooks) {
     prompt() {
       const parts = [`연료 상자 ${boiler.bin}/${BOILER.binMax}삽`];
       if (S.inv.wood >= BOILER.woodPerLoad && boiler.bin < BOILER.binMax) parts.push(`E: 목재 넣기 (배낭 ${S.inv.wood})`);
+      else if (S.holstered) parts.push('H: 도구 꺼내기 → 2: 삽으로 퍼 나르기');
       else if (toolId() === 'shovel') parts.push(S.shovelLoad ? '삽에 장작이 있어요 → 기관실 화실로' : boiler.bin > 0 ? '좌클릭: 장작 퍼기' : '비었어요 — 목재를 모아 오세요');
       else parts.push('2: 삽을 들면 퍼 나를 수 있어요');
       return parts.join(' · ');
@@ -81,7 +88,7 @@ export function initTools(hooks) {
         const n = deposit(S.inv.wood); S.inv.wood -= n * BOILER.woodPerLoad; H.flashInv?.(); scoopSnd();
         H.toast(`목재 ${n * BOILER.woodPerLoad}개 → 연료 상자 +${n}삽`); H.act?.({ a: 'deposit', n }); return;
       }
-      if (toolId() === 'shovel') return useTool();
+      if (!S.holstered && toolId() === 'shovel') return useTool();
       return false;
     },
   });
@@ -89,10 +96,10 @@ export function initTools(hooks) {
     id: 'firebox', car: locoCar, pos: FIREBOX, r: 2.0,
     prompt() {
       const st = `화실 불 ${Math.round(boiler.heat * 100)}% · 압력 ${Math.round(boiler.pressure * 100)}%`;
-      if (toolId() === 'shovel' && S.shovelLoad) return '좌클릭: 화실에 장작 넣기 · ' + st;
+      if (!S.holstered && toolId() === 'shovel' && S.shovelLoad) return '좌클릭: 화실에 장작 넣기 · ' + st;
       return st;
     },
-    act: () => toolId() === 'shovel' && S.shovelLoad ? useTool() : false,
+    act: () => !S.holstered && toolId() === 'shovel' && S.shovelLoad ? useTool() : false,
   });
 }
 
@@ -104,7 +111,7 @@ function aim() {
   else { playerWorld(_eye, 1.3); camera.getWorldDirection(_f); }
 }
 export function useTool() {
-  if (!S.started || cool > 0 || switchT < .7) return false;
+  if (!S.started || S.holstered || cool > 0 || switchT < .7) return false;
   const id = toolId(), target = currentTarget();
   if (id === 'shovel') {
     if (target?.id === 'bin' && !S.shovelLoad && boiler.bin > 0) {
@@ -174,7 +181,7 @@ function findHookTarget() {
 }
 let hookAim = null;
 export function toolPrompt() {
-  if (toolId() !== 'hook' || hook.phase !== 'idle') return '';
+  if (S.holstered || toolId() !== 'hook' || hook.phase !== 'idle') return '';
   return hookAim ? `좌클릭: ${ITEM_NAMES[hookAim.userData.item]} 끌어오기` : '';
 }
 
@@ -190,13 +197,13 @@ export function updateTools(dt) {
   // 퀵슬롯 표시
   slotEls.forEach((el, i) => el.classList.toggle('on', i === S.tool));
   slotEls[1].classList.toggle('loaded', !!S.shovelLoad);
-  bar.style.display = S.started ? 'flex' : 'none';
+  bar.style.display = S.started && !S.holstered ? 'flex' : 'none';
 
   // 도구 바꾸기: 내렸다가 올리기
   switchT = Math.min(1, switchT + dt * 4);
   if (switchT >= .5 && shown !== S.tool) shown = S.tool;
   const lower = switchT < .5 ? switchT * 2 : 2 - switchT * 2;   // 0 → 1 → 0
-  vm.forEach((t, i) => t.g.visible = i === shown);
+  vm.forEach((t, i) => t.g.visible = i === shown && !(S.holstered && switchT >= .5));
   vm[1].parts.load.visible = !!S.shovelLoad;
   vm[3].parts.tip.visible = hook.phase === 'idle';
 
@@ -218,7 +225,7 @@ export function updateTools(dt) {
   if (tracerT > 0) { tracerT -= dt; tracer.material.opacity = Math.max(0, tracerT / .08); if (tracerT <= 0) tracer.visible = false; }
 
   // 갈고리
-  hookAim = toolId() === 'hook' && hook.phase === 'idle' && S.started ? findHookTarget() : null;
+  hookAim = !S.holstered && toolId() === 'hook' && hook.phase === 'idle' && S.started ? findHookTarget() : null;
   updateHook(dt);
 }
 function updateHook(dt) {

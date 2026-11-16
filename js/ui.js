@@ -2,7 +2,7 @@
 import { renderer } from './scene.js';
 import { player, ext } from './player.js';
 import { interact, promptText } from './interact.js';
-import { selectTool, useTool, toolPrompt } from './tools.js';
+import { selectTool, useTool, toolPrompt, toggleHolster } from './tools.js';
 import { queueLength } from './world.js';
 import { QUALITY, QUALITY_ORDER } from './config.js';
 import { clamp } from './noise.js';
@@ -20,6 +20,7 @@ export function initUI(handlers) {
     if (e.repeat || !S.started) return;
     if (e.code === 'KeyE') interact();
     if (/^Digit[1-4]$/.test(e.code)) selectTool(+e.code[5] - 1);
+    if (e.code === 'KeyH') toggleHolster();
     if (e.code === 'KeyX') H.faster(); if (e.code === 'KeyZ') H.slower();
     if (e.code === 'KeyR') H.reelIn();
     if (e.code === 'KeyV') setView(S.viewMode === 'fp' ? 'ext' : 'fp');
@@ -42,7 +43,7 @@ export function initUI(handlers) {
     if (S.viewMode === 'fp') { player.yaw -= e.movementX * .0022; player.pitch = clamp(player.pitch - e.movementY * .0022, -1.5, 1.5); }
     else { ext.yaw += e.movementX * .006; ext.pitch = clamp(ext.pitch + e.movementY * .004, -.5, 1.1); }
   });
-  cvs.addEventListener('wheel', e => { if (S.viewMode === 'fp' && S.started) { selectTool(S.tool + (e.deltaY > 0 ? 1 : -1)); e.preventDefault(); return; } if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
+  cvs.addEventListener('wheel', e => { if (S.viewMode === 'fp' && S.started && !S.holstered) { selectTool(S.tool + (e.deltaY > 0 ? 1 : -1)); e.preventDefault(); return; } if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
 
   $('go').onclick = () => { $('start').style.display = 'none'; S.started = true; H.start(); tryLock(); updateResume(); };
   $('bView').onclick = () => setView(S.viewMode === 'fp' ? 'ext' : 'fp');
@@ -111,7 +112,9 @@ export function updateHUD(dt) {
   invFlash = Math.max(0, invFlash - dt);
   const iv = S.inv; $('inv').textContent = `배낭 · 목재 ${iv.wood} · 고철 ${iv.scrap}`;
   $('inv').classList.toggle('flash', invFlash > 0);
-  $('prompt').textContent = promptText() || toolPrompt();
+  const ptxt = promptText() || toolPrompt();
+  $('prompt').textContent = ptxt;
+  $('cross').classList.toggle('target', !!ptxt);   // 평소 화면: 글자 대신 조준점이 고리로
   $('boil').textContent = `🔥 불 ${Math.round(S.heat * 100)}% · 압력 ${Math.round(S.pressure * 100)}%`;
   $('boil').classList.toggle('low', S.pressure < .3);
   $('hpfill').style.width = S.hp + '%'; $('hp').classList.toggle('low', S.hp < 35);

@@ -13,6 +13,7 @@ export const S = {
   shake: 0,                       // 카메라 흔들림 (fx → player)
   inv: { scrap: 0, wood: 0 },          // 배낭
   heat: 1, pressure: .6, hp: 100,
+  holstered: true,                       // H 로 도구 꺼내기 전엔 퀵슬롯·도구 숨김
   tool: 1,                               // 퀵슬롯 (0 렌치 · 1 삽 · 2 권총 · 3 갈고리)
   shovelLoad: 0,                         // 삽 위 장작 (0 또는 1)
   debug: location.hash === '#debug' || new URLSearchParams(location.search).has('debug'),
