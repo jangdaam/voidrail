@@ -45,7 +45,12 @@ export function initUI(handlers) {
   });
   cvs.addEventListener('wheel', e => { if (S.viewMode === 'fp' && S.started && !S.holstered) { selectTool(S.tool + (e.deltaY > 0 ? 1 : -1)); e.preventDefault(); return; } if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
 
-  $('go').onclick = () => { $('start').style.display = 'none'; S.started = true; H.start(); tryLock(); updateResume(); };
+  // 안내 카드 없이 바로 탑승. 소리·마우스 고정은 브라우저 규칙상 첫 클릭/키 입력 때 시작
+  $('start').style.display = 'none'; S.started = true;
+  let primed = false;
+  const prime = () => { if (primed) return; primed = true; H.start(); };
+  addEventListener('pointerdown', prime, { capture: true }); addEventListener('keydown', prime, { capture: true });
+  $('go').onclick = () => { prime(); tryLock(); updateResume(); };     // (테스트 호환)
   $('bView').onclick = () => setView(S.viewMode === 'fp' ? 'ext' : 'fp');
   $('bNext').onclick = () => H.nextRegion();
   $('bTime').onclick = e => { S.timeMul = S.timeMul === 1 ? 10 : 1; e.target.textContent = '시간 ×' + S.timeMul; };

@@ -41,7 +41,7 @@
   /* 평소 화면: 체력·퀵슬롯·조준점·상호작용 안내만 */
   body:not(.dbg) #mode, body:not(.dbg) #inv, body:not(.dbg) #boil, body:not(.dbg) #ui, body:not(.dbg) #raidbar, body:not(.dbg) #mp{display:none !important}
   body:not(.dbg) #hotbar{bottom:18px}
-  body:not(.dbg) #prompt{display:none}
+  body:not(.dbg) #prompt, body:not(.dbg) #resume{display:none !important}
   #cross.target{width:16px;height:16px;margin:-8px 0 0 -8px;background:transparent;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1.5px rgba(0,0,0,.35),inset 0 0 0 1.5px rgba(0,0,0,.25);transition:all .1s}
   body:not(.dbg) #hp{bottom:36px}
   #chase{position:fixed;left:50%;top:16px;transform:translateX(-50%);width:260px;text-align:center;font-size:13px;font-weight:800;text-shadow:0 1px 3px rgba(0,0,0,.6)}

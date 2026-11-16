@@ -24,6 +24,12 @@ jobs:
         run: |
           mkdir _site
           cp -r index.html js vendor _site/
+      - name: 캐시 무효화 (배포마다 스크립트 주소에 버전 붙이기 → 옛 파일과 섞이지 않음)
+        run: |
+          V=${GITHUB_SHA::8}
+          find _site/js -name '*.js' -exec perl -pi -e "s#((?:from|import\()\s*'\.\.?/[^']+?\.js)'#\$1?v=$V'#g" {} +
+          perl -pi -e "s#js/main\.js#js/main.js?v=$V#" _site/index.html
+          grep -c "?v=$V" _site/js/main.js _site/index.html
       - uses: actions/upload-pages-artifact@v3
       - id: deployment
         uses: actions/deploy-pages@v4
