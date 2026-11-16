@@ -20,7 +20,8 @@ import * as A from './audio.js';
 import { feel } from './feel.js';
 import { damagePlayer, dropShards, raid } from './raid.js';
 
-let H = {};
+let H = {};   // { toast, banner, isClient(), sendEv(d, to?), selfId() }
+const client = () => !!H.isClient?.();
 export function initChaser(hooks) { H = hooks; }
 
 /* ---------- 모델: 머리 + 마디 몸통 (각 마디가 선로를 따라감) ---------- */
@@ -70,6 +71,7 @@ export function startChase() {
 }
 function endChase(msg, drop) {
   chase.active = false; root.visible = false; A.setRumble(0);
+  if (!client() && msg) H.sendEv?.({ k: 'cend', msg, drop: !!drop });
   chase.next = CHASE.intervalMin + Math.random() * (CHASE.intervalMax - CHASE.intervalMin);
   if (msg) H.toast?.(msg);
   if (drop) A.raidClear();
@@ -119,6 +121,9 @@ function ram() {
   chase.gap = CHASE.ramGap + CHASE.knockback; chase.stun = 1.2; chase.rammed++;
   boiler.pressure = Math.max(0, boiler.pressure - CHASE.ramPressure);
   S.speed *= .6;
+  ramFx(); H.sendEv?.({ k: 'ram' });
+}
+function ramFx() {
   feel.shake(.6); A.ramCrash(); H.toast?.('들이받혔어요! 압력이 크게 떨어졌어요');
   if (player.car === cabinCar && player.inGrav) damagePlayer(CHASE.ramDamage, null);
 }
@@ -133,15 +138,29 @@ export function rayChaser(origin, dir, maxDist) {
   if (t < 0 || t > maxDist || _o.lengthSq() - t * t > CHASE.headR * CHASE.headR) return null;
   return { dist: t, point: origin.clone().addScaledVector(dir, t) };
 }
-export function hitChaser(dmg, point) {
+export function hitChaser(dmg, point, by = 'me') {
+  if (client() && by === 'me') {               // 판정은 기관사가: 연출만 먼저
+    chase.flash = 1; feel.floatNumber(point, dmg); feel.hitMarker(false); feel.hitstop(.03); sparkAt(point, 0xff5ad1, 10, 4); A.hitThwack();
+    H.sendEv?.({ k: 'hitc', d: dmg, p: point.toArray() }); return;
+  }
+  if (!chase.active) return;
   chase.hp -= dmg; chase.flash = 1; chase.gap += CHASE.hitPush * dmg; chase.stun = Math.max(chase.stun, .25);
-  feel.floatNumber(point, dmg); feel.hitMarker(chase.hp <= 0); feel.hitstop(.03);
   sparkAt(point, 0xff5ad1, 10, 4);
+  if (by === 'me') { feel.floatNumber(point, dmg); feel.hitMarker(chase.hp <= 0); feel.hitstop(.03); }
   if (chase.hp <= 0) {
-    A.chaseRoar(1.2); feel.shake(.25);
-    dropShards(point, CHASE.dropScrap);
+    killFx(point, by);
+    H.sendEv?.({ k: 'ckill', by: by === 'me' ? H.selfId?.() : by, p: point.toArray() });
     endChase('선로 포식자가 비명을 지르며 물러났어요!', true);
   } else A.hitThwack();
+}
+function killFx(point, by) { A.chaseRoar(1.2); feel.shake(.25); if (by === 'me') feel.hitMarker(true); dropShards(point, CHASE.dropScrap, by); }
+/** 추적자 관련 이벤트 수신 */
+const _pt = new THREE.Vector3();
+export function onChaseEv(d, from) {
+  if (d.k === 'hitc' && !client()) hitChaser(d.d, _pt.fromArray(d.p).clone(), from);
+  else if (d.k === 'ram') ramFx();
+  else if (d.k === 'ckill') killFx(_pt.fromArray(d.p).clone(), d.by === H.selfId?.() ? 'me' : d.by);
+  else if (d.k === 'cend') { if (chase.active) { chase.active = false; root.visible = false; A.setRumble(0); } H.toast?.(d.msg); if (d.drop) A.raidClear(); }
 }
 
 /* 멀티플레이: 기관사 기준 */

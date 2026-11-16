@@ -90,6 +90,7 @@ export class Session {
       case 'pick': if (typeof d?.id === 'string') this.h.onPick(d.id, r.name); break;
       case 'taken': if (Array.isArray(d)) this.h.applyTaken(d); break;
       case 'act': if (d && typeof d.a === 'string') this.h.onAct?.(d, r.name); break;
+      case 'ev': if (d && typeof d.k === 'string') this.h.onEv?.(d, id, r.name); break;
     }
   }
   sendPing(id) { this.tr.sendRel('ping', { t0: now() }, id); }
@@ -97,6 +98,8 @@ export class Session {
   /* ---------- 송신 ---------- */
   sendControl(targetSpeed) { if (this.connected) this.tr.sendRel('ctrl', { targetSpeed }); }
   sendPick(id) { if (this.connected) this.tr.sendRel('pick', { id }); }
+  /** 범용 게임 이벤트 (to 를 주면 그 승객에게만) */
+  sendEv(d, to = null) { if (this.connected && this.remotes.size) this.tr.sendRel('ev', d, to); }
   sendAct(d) { if (this.connected && this.remotes.size) this.tr.sendRel('act', d); }
 
   /* ---------- 매 프레임 ---------- */
@@ -127,6 +130,7 @@ export class Session {
       const car = this.h.trainToWorld(o.p, r.avatar.holder.position);
       r.avatar.holder.quaternion.copy(car.g.quaternion);
       Object.assign(r.st, { speed: Math.hypot(o.v.x, o.v.z), vy: o.v.y, grounded: !!(o.flags & FLAG_GROUND), inGrav: !!(o.flags & FLAG_GRAV), yaw: o.yaw, pitch: o.pitch });
+      (r.tp ||= new THREE.Vector3()).set(o.p.x ?? o.p[0], o.p.y ?? o.p[1], o.p.z ?? o.p[2]); r.flags = o.flags;
       r.avatar.setTool(flagTool(o.flags), flagLoaded(o.flags));
       r.avatar.update(dt, r.st, time);
     }

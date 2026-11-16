@@ -16,7 +16,13 @@ import { S } from './state.js';
 import * as A from './audio.js';
 import { feel } from './feel.js';
 
-let H = {};   // { toast, banner, fade, flashInv }
+let H = {};   // { toast, banner, fade, flashInv, isClient(), sendEv(d, to?), selfId(), peers() → [{id, p(기관차 로컬), exp}] }
+/* 멀티플레이: 기관사(호스트)만 진드기 AI·추적자를 돌리고, 나머지는 상태를 받아 그대로 보여 준다.
+ * 다른 승객의 공격은 호스트에게 보내 판정. 처치·물기·들이받기는 이벤트로 알린다. */
+const ME = 'me';
+const netId = id => id === ME ? (H.selfId?.() ?? ME) : id;     // 보낼 때
+const localId = id => id === (H.selfId?.() ?? ME) ? ME : id;    // 받을 때
+const client = () => !!H.isClient?.();
 export function initRaid(hooks) { H = hooks; }
 
 /* ---------- 모델 ---------- */
@@ -85,8 +91,22 @@ const toLocal = (world, out) => out.copy(world).applyMatrix4(locoCar.inv);
 /** 플레이어가 공격받을 수 있는가: 바깥(무중력) 또는 지붕이 없는 칸 */
 export const exposed = () => !player.inGrav || !player.car.enclosed || (player.car.roofX0 !== undefined && player.p.x < player.car.roofX0);
 
+/** 공격받을 수 있는 승객들 (기관차 로컬 좌표) */
+let targets = [];
+function gatherTargets() {
+  playerWorld(_pl, .9); toLocal(_pl, _plL);
+  targets = [{ id: ME, p: _plL, exp: exposed() }, ...(H.peers?.() || [])];
+}
+function nearest(p, onlyExposed, maxD = 45) {
+  let best = null, bd = maxD;
+  for (const T of targets) { if (onlyExposed && !T.exp) continue; const d = T.p.distanceTo(p); if (d < bd) { bd = d; best = T; } }
+  return best;
+}
+
 /* ---------- 매 프레임 ---------- */
 export function updateRaid(dt, canSpawn) {
+  gatherTargets();
+  if (client()) { for (const m of pool) if (m.alive) updateMite(m, dt, false); updateDebris(dt); updateShards(dt); return; }
   // 일정 (기차가 달리는 동안만 시간이 흐름)
   if (!raid.active && canSpawn && S.speed > 2 && S.started && !S.loading) { raid.next -= dt; if (raid.next <= 0) startRaid(); }
   if (raid.active && raid.toSpawn > 0) {
@@ -104,24 +124,29 @@ export function updateRaid(dt, canSpawn) {
   }
   if (raid.active && raid.toSpawn <= 0 && aliveCount() === 0) endRaid();
 
-  playerWorld(_pl, .9); const plLocal = toLocal(_pl, _plL);
-  for (const m of pool) if (m.alive) updateMite(m, dt, plLocal);
+  for (const m of pool) if (m.alive) updateMite(m, dt, true);
   updateDebris(dt); updateShards(dt);
 }
 
-function updateMite(m, dt, pl) {
+function updateMite(m, dt, authority) {
   m.t += dt; m.cool -= dt; m.flash = Math.max(0, m.flash - dt * 6); m.squash = Math.max(0, m.squash - dt * 5);
   const grow = Math.min(1, m.t * 2);
   let speed = RAID.speed, lookAt = null;
-  if (m.state === 'latched') {
+  const T = nearest(m.p, true), pl = T ? T.p : targets[0].p;
+  if (!authority) {
+    // 받은 상태를 향해 부드럽게 (받은 뒤 지난 시간만큼 속도로 예측)
+    const n = m.net; if (n) { const age = Math.min(.3, (performance.now() - n.at) / 1000); _tgt.copy(n.p).addScaledVector(n.v, age); m.p.lerp(_tgt, 1 - Math.exp(-dt * 12)); m.v.copy(n.v); }
+    if (m.state !== 'latched') lookAt = m.v.lengthSq() > 4 && m.state !== 'approach' ? _tgt.copy(m.p).add(m.v) : pl;
+    if (m.state === 'latched') { m.chewT -= dt; if (m.chewT <= 0) { m.chewT = .6 + Math.random() * .5; toWorld(m.p, _w); A.chew(); sparkAt(_w, 0xffd27a, 3, 1.5); } }
+  } else if (m.state === 'latched') {
     const L = m.latch; L.car.g.updateMatrixWorld(); _w.copy(L.pos).applyMatrix4(L.car.g.matrixWorld); toLocal(_w, m.p); m.v.set(0, 0, 0);
     boiler.pressure = Math.max(0, boiler.pressure - RAID.drain * dt);
     m.chewT -= dt; if (m.chewT <= 0) { m.chewT = .6 + Math.random() * .5; A.chew(); sparkAt(_w, 0xffd27a, 3, 1.5); }
     // 플레이어가 가까이 오면 떨어져 나와 덤빈다
-    if (exposed() && m.p.distanceTo(pl) < 4 && m.cool <= 0) { detach(m); m.mode = 'player'; m.state = 'approach'; }
+    if (T && m.p.distanceTo(pl) < 4 && m.cool <= 0) { detach(m); m.mode = 'player'; m.state = 'approach'; }
   } else {
     let target;
-    if (m.mode === 'player' && exposed() && pl.distanceTo(m.p) < 45) {
+    if (m.mode === 'player' && T) {
       target = pl;
       const d = m.p.distanceTo(pl);
       if (m.state === 'retreat') { if (m.t > m.retreatUntil) m.state = 'approach'; target = _d.copy(m.p).sub(pl).setLength(8).add(m.p); }
@@ -131,7 +156,7 @@ function updateMite(m, dt, pl) {
       }
       if (m.state === 'dash') {
         speed = RAID.dash;
-        if (d < 1.1) { bite(m, pl); }
+        if (d < 1.1) { bite(m, T); }
         if (m.t > 30) m.state = 'approach';
       }
       lookAt = pl;
@@ -163,10 +188,11 @@ function updateMite(m, dt, pl) {
 }
 function detach(m) { if (m.latch) { m.latch.taken = null; m.latch = null; } m.cool = 1.2; }
 
-function bite(m, pl) {
+function bite(m, T) {
   m.state = 'retreat'; m.retreatUntil = m.t + 1.2 + Math.random(); m.cool = RAID.biteCool;
   m.v.multiplyScalar(-.6);
-  damagePlayer(RAID.bite, m.p);
+  if (T.id === ME) damagePlayer(RAID.bite, m.p);
+  else H.sendEv?.({ k: 'dmg', n: RAID.bite, f: m.p.toArray() }, T.id);
 }
 
 /* ---------- 플레이어 체력 ---------- */
@@ -217,25 +243,36 @@ export function meleeMites(origin, dir, range = 2.4) {
   });
 }
 /** 진드기에게 피해. dirWorld: 넉백 방향 */
-export function hitMite(m, dmg, dirWorld, point) {
+export function hitMite(m, dmg, dirWorld, point, by = ME) {
+  if (client() && by === ME) {
+    m.flash = 1; m.squash = 1; feel.floatNumber(point || m.g.position, dmg); A.hitThwack(); feel.hitMarker(false); feel.hitstop(.035);
+    H.sendEv?.({ k: 'hitm', i: pool.indexOf(m), d: dmg, dir: dirWorld.toArray() });
+    return false;
+  }
+  if (!m.alive) return false;
   m.hp -= dmg; m.flash = 1; m.squash = 1;
   // 넉백 (월드 → 기관차 로컬)
   _d.copy(dirWorld).applyQuaternion(_q.copy(locoCar.g.quaternion).invert());
   m.v.addScaledVector(_d, dmg * 6); m.t = Math.max(m.t, .5);
   if (m.state === 'latched') { detach(m); m.state = 'approach'; m.mode = 'player'; }
   else if (m.state === 'dash') { m.state = 'retreat'; m.retreatUntil = m.t + .8; }
-  feel.floatNumber(point || m.g.position, dmg);
-  if (m.hp <= 0) { kill(m, dirWorld); return true; }
-  A.hitThwack(); feel.hitMarker(false); feel.hitstop(.035);
+  if (m.hp <= 0) {
+    const n = 1 + (Math.random() < RAID.extraDrop ? 1 : 0);
+    killFx(m, dirWorld, by, n);
+    H.sendEv?.({ k: 'kill', i: pool.indexOf(m), by: netId(by), n, dir: dirWorld.toArray() });
+    return true;
+  }
+  if (by === ME) { feel.floatNumber(point || m.g.position, dmg); A.hitThwack(); feel.hitMarker(false); feel.hitstop(.035); }
   return false;
 }
-function kill(m, dir) {
+/** 처치 연출 + 고철 조각(처치한 사람에게 날아감) — 모든 화면에서 같이 실행 */
+function killFx(m, dir, by, n) {
   detach(m); m.alive = false; m.g.visible = false; raid.kills++;
-  A.killPop(); feel.hitMarker(true); feel.hitstop(.07); feel.shake(.06);
+  A.killPop(); feel.shake(by === ME ? .06 : .02);
+  if (by === ME) { feel.hitMarker(true); feel.hitstop(.07); }
   sparkAt(m.g.position, 0xb98cff, 16, 4); sparkAt(m.g.position, 0x7ffcff, 6, 2);
   for (let i = 0; i < 7; i++) spawnDebris(m.g.position, dir);
-  const n = 1 + (Math.random() < RAID.extraDrop ? 1 : 0);
-  for (let i = 0; i < n; i++) spawnShard(m.g.position);
+  for (let i = 0; i < n; i++) spawnShard(m.g.position, by);
 }
 
 /* ---------- 파편 (몸 조각) ---------- */
@@ -258,17 +295,21 @@ function updateDebris(dt) {
 
 /* ---------- 고철 조각: 잠깐 떠 있다가 플레이어에게 빨려 옴 ---------- */
 const shards = Array.from({ length: 20 }, () => { const s = new THREE.Mesh(shardGeo, landMat); s.visible = false; s.userData = { p: new THREE.Vector3(), v: new THREE.Vector3(), t: 0 }; scene.add(s); return s; });
-export function dropShards(worldPos, n) { for (let i = 0; i < n; i++) spawnShard(worldPos); }
-function spawnShard(worldPos) {
+export function dropShards(worldPos, n, owner = ME) { for (let i = 0; i < n; i++) spawnShard(worldPos, owner); }
+function spawnShard(worldPos, owner = ME) {
   const s = shards.find(x => !x.visible); if (!s) return; const u = s.userData;
-  toLocal(worldPos, u.p); u.v.set(Math.random() - .5, 1 + Math.random(), Math.random() - .5).multiplyScalar(2.5); u.t = 0; s.visible = true;
+  toLocal(worldPos, u.p); u.v.set(Math.random() - .5, 1 + Math.random(), Math.random() - .5).multiplyScalar(2.5); u.t = 0; u.owner = owner; s.visible = true;
 }
 function updateShards(dt) {
-  playerWorld(_pl, .9); toLocal(_pl, _l);
   for (const s of shards) {
     if (!s.visible) continue; const u = s.userData; u.t += dt;
+    const T = targets.find(x => x.id === u.owner);
+    if (!T) { s.visible = false; continue; }                 // 주인이 내렸음
     if (u.t < .7) u.v.multiplyScalar(Math.exp(-dt * 3));
-    else { _d.subVectors(_l, u.p); const d = _d.length(); u.v.lerp(_d.setLength(Math.min(25, 6 + u.t * 10)), 1 - Math.exp(-dt * 5)); if (d < .9) { s.visible = false; S.inv.scrap++; A.chime('scrap'); H.flashInv?.(); feel.pickup(s.position); continue; } }
+    else {
+      _d.subVectors(T.p, u.p); const d = _d.length(); u.v.lerp(_d.setLength(Math.min(25, 6 + u.t * 10)), 1 - Math.exp(-dt * 5));
+      if (d < .9) { s.visible = false; if (u.owner === ME) { S.inv.scrap++; A.chime('scrap'); H.flashInv?.(); feel.pickup(s.position); } continue; }
+    }
     u.p.addScaledVector(u.v, dt); toWorld(u.p, s.position); s.rotation.y += dt * 5; s.rotation.x += dt * 3;
     if (u.t > 12) s.visible = false;
   }
@@ -276,3 +317,32 @@ function updateShards(dt) {
 export function clearRaid() { for (const m of pool) { m.alive = false; m.g.visible = false; } for (const l of LATCH) l.taken = null; raid.active = false; raid.toSpawn = 0; }
 export const __pool = pool;
 export const __inv = () => locoCar.inv;
+
+/* ---------- 멀티플레이 동기화 ---------- */
+const STATES = ['approach', 'dash', 'retreat', 'latched'];
+/** 호스트 → 모두: 습격 상태 (10Hz) */
+export function raidNetState() {
+  return { a: raid.active ? 1 : 0, w: raid.wave, n: raid.toSpawn, m: pool.map((m, i) => m.alive ? [i, ...m.p.toArray().map(v => +v.toFixed(2)), ...m.v.toArray().map(v => +v.toFixed(2)), STATES.indexOf(m.state)] : null).filter(Boolean) };
+}
+export function applyRaidNet(st) {
+  if (st.a && !raid.active) { raid.active = true; raid.wave = st.w; raid.kills = 0; H.banner?.('⚠ 공허 떼 습격'); H.toast?.('공허 진드기 떼가 다가와요! 권총(3)과 렌치(1)로 막아 내세요'); A.raidHorn(); feel.shake(.15); }
+  if (!st.a && raid.active) { raid.active = false; H.toast?.('습격을 막아 냈어요!'); A.raidClear(); }
+  raid.toSpawn = st.n;
+  const seen = new Set();
+  for (const [i, x, y, z, vx, vy, vz, s] of st.m) {
+    const m = pool[i]; if (!m) continue; seen.add(i);
+    if (!m.alive) { _l.set(x, y, z); m.spawn(_l); }
+    m.net = m.net || { p: new THREE.Vector3(), v: new THREE.Vector3(), at: 0 };
+    m.net.p.set(x, y, z); m.net.v.set(vx, vy, vz); m.net.at = performance.now();
+    if (STATES[s] === 'latched' && m.state !== 'latched') A.chew();
+    m.state = STATES[s] || 'approach';
+  }
+  for (let i = 0; i < pool.length; i++) if (pool[i].alive && !seen.has(i)) { pool[i].alive = false; pool[i].g.visible = false; }   // 놓친 처치 보정
+}
+const _v3 = new THREE.Vector3();
+/** 습격 관련 이벤트 수신 (from: 보낸 승객 id) */
+export function onRaidEv(d, from) {
+  if (d.k === 'hitm' && !client()) { const m = pool[d.i]; if (m?.alive) hitMite(m, d.d, _v3.fromArray(d.dir), null, from); }
+  else if (d.k === 'kill') { const m = pool[d.i]; if (m && (m.alive || m.g.visible)) { m.alive = true; killFx(m, _v3.fromArray(d.dir), localId(d.by), d.n); } }
+  else if (d.k === 'dmg') damagePlayer(d.n, _v3.fromArray(d.f));
+}

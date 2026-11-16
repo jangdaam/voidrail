@@ -18,9 +18,10 @@ import { Session, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT, toolFlags } from './net/s
 import { boiler, updateBoiler, maxSpeed, boilerState, applyBoilerState } from './boiler.js';
 import { updateInteract } from './interact.js';
 import { initTools, updateTools, renderViewmodel, applyRemoteAct } from './tools.js';
-import { initRaid, updateRaid, updateHealth, startRaid, raid, aliveCount, clearRaid } from './raid.js';
+import { initRaid, updateRaid, updateHealth, startRaid, raid, aliveCount, clearRaid, raidNetState, applyRaidNet, onRaidEv } from './raid.js';
 import { updateFeel, applyKick, timeFactor } from './feel.js';
-import { initChaser, updateChaser, startChase, chaseInfo, chaseState, applyChaseState } from './chaser.js';
+import { initChaser, updateChaser, startChase, chaseInfo, chaseState, applyChaseState, onChaseEv } from './chaser.js';
+import { locoCar } from './train.js';
 import { makeTransport } from './net/transport.js';
 import { now } from './net/clock.js';
 import { initMPUI, setPeers, setMPStatus } from './mpui.js';
@@ -66,6 +67,11 @@ const netHooks = {
   takenList: () => [...taken].slice(-400),
   applyTaken(ids) { for (const id of ids) removeItem(id); },
   onAct(d) { applyRemoteAct(d); },
+  onEv(d, from) {
+    if (d.k === 'raid') { if (isClient()) applyRaidNet(d); }
+    else if (['hitm', 'kill', 'dmg'].includes(d.k)) onRaidEv(d, from);
+    else onChaseEv(d, from);
+  },
   onPeers: list => setPeers(list, session),
   log: msg => toast(msg),
 };
@@ -117,8 +123,24 @@ setBiomeListener((B, idx) => { banner(B.name); setChord(idx); if (S.started && !
 
 initUI(handlers);
 initTools({ toggleTrain: handlers.toggleTrain, toast, flashInv, act: d => session?.sendAct(d) });
-initRaid({ toast, banner, fade, flashInv });
-initChaser({ toast, banner });
+/* 습격·추적자용 멀티플레이 연결 */
+const _pw = new THREE.Vector3();
+const netGlue = {
+  isClient, selfId: () => session?.selfId, sendEv: (d, to) => session?.sendEv(d, to),
+  peers() {                       // 다른 승객: 기관차 로컬 좌표 + 공격받을 수 있는지
+    if (!session?.connected) return [];
+    const out = [];
+    for (const r of session.remotes.values()) {
+      if (!r.tp || !r.avatar.holder.visible) continue;
+      const car = trainToWorld(r.tp, _pw), lx = r.tp.x + car.off, grav = !!(r.flags & FLAG_GRAV);
+      out.push({ id: r.id, p: _pw.clone().setY(_pw.y + 0).applyMatrix4(locoCar.inv).add(new THREE.Vector3(0, .9, 0)), exp: !grav || !car.enclosed || (car.roofX0 !== undefined && lx < car.roofX0) });
+    }
+    return out;
+  },
+};
+initRaid({ toast, banner, fade, flashInv, ...netGlue });
+initChaser({ toast, banner, ...netGlue });
+let raidSendT = 0;
 initMPUI(handlers, params);
 shuffleOrder();
 updateChunks(S.sTrain);
@@ -186,7 +208,10 @@ function frame() {
   updateInteract(); updateTools(dt);
   updateRaid(dt, !isClient()); updateHealth(dt); updateChaser(dt, !isClient()); PM('tools');
   for (const p of updatePickups(wp, picks)) { S.inv[p.type]++; pickupFx(p.type, p.pos); chime(p.type); flashInv(); session?.sendPick(p.id); }
-  session?.update(dt, S.time); PM('pickups');
+  session?.update(dt, S.time);
+  if (session?.connected && session.isHost() && session.remotes.size) {     // 습격 상태 방송 (진행 중 10Hz, 아니면 1Hz)
+    raidSendT -= realDt; if (raidSendT <= 0) { raidSendT = raid.active ? .1 : 1; session.sendEv({ k: 'raid', ...raidNetState() }); }
+  } PM('pickups');
 
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   sunSprite.position.copy(camera.position).addScaledVector(sunDir, 1300);
