@@ -128,16 +128,25 @@ function syncTrain(dt) {
   if (todTarget !== null) { let d = ((todTarget + (now() - netTrain.at) / 1000 * S.timeMul / 240 - S.tod) % 1 + 1.5) % 1 - .5; S.tod = (S.tod + (Math.abs(d) > .05 ? d : d * Math.min(1, dt)) + 1) % 1; }
 }
 
+/* 프레임 구간 측정 (#debug): 긴 프레임만 기록 → window.__prof */
+const PROF = S.debug || params.has('prof'), profRec = [], profCur = {}; let profT = 0, profStart = 0;
+window.__prof = profRec;
+function PM(name) { if (!PROF) return; const t = performance.now(); if (name) profCur[name] = (profCur[name] || 0) + t - profT; else { for (const k in profCur) delete profCur[k]; profStart = t; } profT = t; }
+let profGap = 0;
+function PE() { if (!PROF) return; const tot = performance.now() - profStart; if ((tot > 12 || profGap > 45) && profRec.length < 400) profRec.push({ at: Math.round(S.time * 10) / 10, gap: Math.round(profGap), tot: +tot.toFixed(1), q: queueLength(), ...Object.fromEntries(Object.entries(profCur).filter(([, v]) => v > 1).map(([k, v]) => [k, +v.toFixed(1)])) }); }
+
 function frame() {
   if (!running) return;
   requestAnimationFrame(frame);
+  PM(null);
   const realDt = clock.getDelta(), dt = Math.min(.1, realDt); S.time += dt;
+  profGap = realDt * 1000;
   timeScale += ((realDt > 0 ? dt / realDt : 1) - timeScale) * .2;
 
   if (S.loading) {
     processQueue(60); loadT += dt;
     if (queueLength() === 0 || loadT > 4) { S.loading = false; fade(false); }
-  } else processQueue(QUALITY[S.quality].budget);
+  } else processQueue(QUALITY[S.quality].budget); PM('queue');
 
   // 기차 이동 (+ 접속 중이면 기관사 기준으로 보정)
   // 보일러: 압력이 낼 수 있는 속도까지만 (압력이 떨어지면 서서히 감속)
@@ -147,7 +156,7 @@ function frame() {
   const moveS = S.loading && !isClient() ? 0 : S.speed * dt / arcScale(S.sTrain);
   const before = S.sTrain;
   S.sTrain += moveS;
-  syncTrain(dt);
+  syncTrain(dt); PM('train');
   const travelled = S.sTrain - before;
 
   const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car.enclosed;
@@ -155,17 +164,17 @@ function frame() {
   if (joint !== lastJoint) { lastJoint = joint; clack(S.speed, player.inGrav); if (player.inGrav && player.grounded && S.speed > 2) S.shake = Math.max(S.shake, Math.min(.03, S.speed * .0012)); }
   chuffAcc += Math.max(0, travelled); if (chuffAcc > 3.14) { chuffAcc %= 3.14; chuff(S.speed); }
 
-  updateEnv(dt);
-  updateChunks(S.sTrain);
-  placeTrain();
+  updateEnv(dt); PM('env');
+  updateChunks(S.sTrain); PM('chunks');
+  placeTrain(); PM('place');
   if (S.started) updatePlayer(dt);
   playerWorld(wp);
-  updateCamera(dt, snap); snap = false;
+  updateCamera(dt, snap); snap = false; PM('player');
   localAvatar.setTool(S.tool, S.shovelLoad);
   updateAvatar(wp, dt);
-  updateInteract(); updateTools(dt);
+  updateInteract(); updateTools(dt); PM('tools');
   for (const p of updatePickups(wp, picks)) { S.inv[p.type]++; pickupFx(p.type, p.pos); chime(p.type); flashInv(); session?.sendPick(p.id); }
-  session?.update(dt, S.time);
+  session?.update(dt, S.time); PM('pickups');
 
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   sunSprite.position.copy(camera.position).addScaledVector(sunDir, 1300);
@@ -173,10 +182,10 @@ function frame() {
   trackPos(S.sTrain - 14, _P);
   sun.position.copy(_P).addScaledVector(sunDir, 220); sun.target.position.copy(_P);
   moon.position.copy(_P).addScaledVector(sunDir, -220); moon.target.position.copy(_P);
-  updateSea(false); animateWorld(S.time, dt); updateSmoke(dt); updateWhale(dt); updateWeather(dt); updateFx(dt);
+  updateSea(false); animateWorld(S.time, dt); updateSmoke(dt); updateWhale(dt); updateWeather(dt); updateFx(dt); PM('anim');
   updateAudio(!player.inGrav, inside);
-  if (!NO_RENDER) { renderer.render(scene, camera); renderViewmodel(renderer); }
-  updateHUD(dt);
+  if (!NO_RENDER) { renderer.render(scene, camera); renderViewmodel(renderer); } PM('render');
+  updateHUD(dt); PM('hud'); PE();
 }
 placeTrain();
 frame();
