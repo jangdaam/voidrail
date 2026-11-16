@@ -19,7 +19,6 @@ export const ITEM_GEO = {
     prep(new THREE.BoxGeometry(.7, .12, .12), C('#c27b46'), M(.1, .1, .14, 0, 0, .5)),
   ]),
   wood: merged([prep(new THREE.BoxGeometry(1.3, .14, .36), C('#b07a48'), M(0, 0, 0)), prep(new THREE.BoxGeometry(1.1, .14, .32), C('#946238'), M(.1, .15, .05, 0, .35, 0))]),
-  crystal: merged([prep(new THREE.OctahedronGeometry(.32, 0), C('#9ff7ff'), M(0, 0, 0, 0, 0, 0, 1, 1.9, 1)), prep(new THREE.OctahedronGeometry(.2, 0), C('#d8a4ff'), M(.25, -.15, .1, .4, 0, .5, 1, 1.6, 1))]),
 };
 const SHARED = new Set([sleeperGeo, railGeo, ...Object.values(ITEM_GEO)]);
 
@@ -197,7 +196,7 @@ function rawPlan(ci) {
   rng = chunkRng(ci, 14);
   for (let k = 0; k < 10; k++) {
     const s = ci * CH + rng() * CH; frameAt(s, FR); trackPos(s, _P);
-    const side = rng() < .5 ? -1 : 1, r = rng(), type = r < .5 ? 'scrap' : r < .85 ? 'wood' : 'crystal';
+    const side = rng() < .5 ? -1 : 1, r = rng(), type = r < .62 ? 'wood' : 'scrap';
     _Q.copy(_P).addScaledVector(FR.R, side * (4.5 + rng() * 12)).addScaledVector(FR.U, -1.5 + rng() * 8);
     const rx = rng() * 6, ry = rng() * 6, spin = .4 + rng();
     if (!overlaps(sph(_Q.x, _Q.y, _Q.z, 1), spheres, 1)) items.push({ id: ci + ':' + k, x: _Q.x, y: _Q.y, z: _Q.z, type, rx, ry, spin });
@@ -263,7 +262,7 @@ function createChunk(ci) {
   if (p.landmark) { const L = p.landmark; queue.push({ rec, fn: () => addHolder(rec, landmarkGeometry(L.kind, L.B, chunkRng(L.seed, 5)), L.x, L.y, L.z, L.rot, .6) }); }
   queue.push({ rec, fn: () => {
     for (const c of p.clouds) { const m = new THREE.Mesh(cloudGeometry(chunkRng(c.seed, 9)), landMat); m.position.set(c.x, c.y, c.z); m.rotation.y = c.rot; m.userData.drift = c.drift; rec.group.add(m); rec.clouds.push(m); }
-    for (const it of p.items) { if (taken.has(it.id)) continue; const m = new THREE.Mesh(ITEM_GEO[it.type], it.type === 'crystal' ? crystalMat : landMat); m.position.set(it.x, it.y, it.z); m.rotation.set(it.rx, it.ry, 0); m.castShadow = true; m.userData = { item: it.type, spin: it.spin, id: it.id }; rec.group.add(m); rec.items.push(m); }
+    for (const it of p.items) { if (taken.has(it.id)) continue; const m = new THREE.Mesh(ITEM_GEO[it.type], landMat); m.position.set(it.x, it.y, it.z); m.rotation.set(it.rx, it.ry, 0); m.castShadow = true; m.userData = { item: it.type, spin: it.spin, id: it.id }; rec.group.add(m); rec.items.push(m); }
   } });
 }
 function disposeChunk(rec) {
@@ -311,3 +310,6 @@ export function updatePickups(wp, out) {
   }
   return out;
 }
+
+/** 갈고리용: 현재 떠 있는 모든 자원 메시 */
+export function* allItems() { for (const rec of chunks.values()) yield* rec.items; }

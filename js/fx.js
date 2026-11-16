@@ -22,8 +22,19 @@ function spawnPuff(big = 1) {
   p.visible = true; p.rotation.set(Math.random() * 3, Math.random() * 3, 0);
 }
 export function smokeBurst(n = 12) { for (let i = 0; i < n; i++) spawnPuff(1.6); }
+/** 안전밸브 증기: 굴뚝 대신 돔 옆에서 하얗게 */
+const VALVE = new THREE.Vector3(1.0, F + 2.3, 0);
+export function steamPuff() { const p = smoke[idx++ % smoke.length], u = p.userData; p.position.copy(VALVE).applyMatrix4(locoCar.g.matrixWorld); u.life = 0; u.max = .9; u.vy = 4; u.sx = (Math.random() - .5) * 3; u.big = .6; p.visible = true; }
+/** 범용 불꽃 (총알 자국, 삽질 등) */
+export function sparkAt(pos, color, n = 8, speed = 3) {
+  for (let i = 0; i < n; i++) {
+    const m = sparks[sIdx++ % sparks.length]; m.visible = true; m.position.copy(pos);
+    m.userData.v.set(Math.random() - .5, Math.random() - .3, Math.random() - .5).normalize().multiplyScalar(speed * (.5 + Math.random())); m.userData.life = 0;
+    m.material.color.set(color); m.material.opacity = 1;
+  }
+}
 export function updateSmoke(dt) {
-  acc += dt * (S.speed > 1 ? 5 + S.speed * .35 : 1.5);
+  acc += dt * (S.speed > 1 ? 5 + S.speed * .35 : 1.5) * (.25 + .75 * (S.heat ?? 1));
   while (acc > 1) { acc -= 1; spawnPuff(); }
   for (const p of smoke) {
     if (!p.visible) continue; const u = p.userData; u.life += dt; if (u.life >= u.max) { p.visible = false; continue; }
@@ -60,7 +71,7 @@ export const hideWhale = () => { whale.visible = false; whaleT = 10; };
 
 /* 줍기 반짝임 */
 const sparkGeo = prep(new THREE.OctahedronGeometry(.09, 0), C('#ffffff'));
-const SPARK_COL = { scrap: C('#d9e2ea'), wood: C('#ffcf8a'), crystal: C('#9ff7ff') };
+const SPARK_COL = { scrap: C('#d9e2ea'), wood: C('#ffcf8a') };
 const sparks = [];
 for (let i = 0; i < 60; i++) { const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false })); m.visible = false; m.userData = { v: new THREE.Vector3(), life: 0 }; scene.add(m); sparks.push(m); }
 let sIdx = 0;

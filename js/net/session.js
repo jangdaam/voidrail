@@ -6,7 +6,7 @@
 //  이벤트  : 레버(속도), 자원 줍기 → 신뢰 채널. 자원은 결정론적 ID 라 서로 다른 화면에서도 같은 물건을 가리킴.
 import * as THREE from 'three';
 import { now, PeerClock } from './clock.js';
-import { encodeSnap, decodeSnap, seqNewer, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT } from './snapshot.js';
+import { encodeSnap, decodeSnap, seqNewer, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT, toolFlags, flagTool, flagLoaded } from './snapshot.js';
 import { RemoteMotion } from './interp.js';
 import { Avatar, colorFor } from '../avatar.js';
 
@@ -89,6 +89,7 @@ export class Session {
       case 'ctrl': if (typeof d?.targetSpeed === 'number') this.h.onControl(d.targetSpeed, r.name); break;
       case 'pick': if (typeof d?.id === 'string') this.h.onPick(d.id, r.name); break;
       case 'taken': if (Array.isArray(d)) this.h.applyTaken(d); break;
+      case 'act': if (d && typeof d.a === 'string') this.h.onAct?.(d, r.name); break;
     }
   }
   sendPing(id) { this.tr.sendRel('ping', { t0: now() }, id); }
@@ -96,6 +97,7 @@ export class Session {
   /* ---------- 송신 ---------- */
   sendControl(targetSpeed) { if (this.connected) this.tr.sendRel('ctrl', { targetSpeed }); }
   sendPick(id) { if (this.connected) this.tr.sendRel('pick', { id }); }
+  sendAct(d) { if (this.connected && this.remotes.size) this.tr.sendRel('act', d); }
 
   /* ---------- 매 프레임 ---------- */
   update(dt, time) {
@@ -125,6 +127,7 @@ export class Session {
       const car = this.h.trainToWorld(o.p, r.avatar.holder.position);
       r.avatar.holder.quaternion.copy(car.g.quaternion);
       Object.assign(r.st, { speed: Math.hypot(o.v.x, o.v.z), vy: o.v.y, grounded: !!(o.flags & FLAG_GROUND), inGrav: !!(o.flags & FLAG_GRAV), yaw: o.yaw, pitch: o.pitch });
+      r.avatar.setTool(flagTool(o.flags), flagLoaded(o.flags));
       r.avatar.update(dt, r.st, time);
     }
   }
@@ -133,4 +136,4 @@ export class Session {
     return [...this.remotes.values()].map(r => ({ name: r.name, rtt: Math.round(r.clock.rtt), delay: Math.round(r.motion.delay), jitter: Math.round(r.motion.jitter), extrap: r.motion.stats.frames ? +(r.motion.stats.extrapFrames / r.motion.stats.frames * 100).toFixed(1) : 0, fast: this.tr.fastOpen(r.id) }));
   }
 }
-export { FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT };
+export { FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT, toolFlags };

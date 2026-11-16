@@ -33,4 +33,29 @@ export const WSPEC = {
   fireflies: { n: 260,  size: .45, color: '#fff08a', add: true,  op: 1 },
 };
 
-export const ITEM_NAMES = { scrap: '고철', wood: '목재', crystal: '결정' };
+export const ITEM_NAMES = { scrap: '고철', wood: '목재' };
+
+/* 보일러 (단위: 연료 1 = 최대 화력으로 1초 타는 양) */
+export const BOILER = {
+  load: 40,            // 삽 한 번 = 장작 한 아름이 넣는 연료
+  binStart: 5,         // 시작 시 연료 상자에 든 삽 수
+  binMax: 20,          // 연료 상자 최대 (삽 단위)
+  woodPerLoad: 2,      // 배낭 목재 2개 = 상자 1삽
+  fireStart: 40,       // 시작 시 화실 연료
+  pressureStart: .6,
+  burnIdle: .35, burnMax: .65,   // 초당 연료 소모 = idle + max × 가감(0~1)
+  heatRate: .5,        // 불 세기 변화 속도
+  gain: .055,          // 불 세기 1일 때 초당 압력 상승
+  useIdle: .01, useMax: .07,     // 초당 압력 소모 = idle + max × (현재속도/최고속도)
+  valve: .95,          // 안전밸브 열림 압력
+  minWork: .15, fullWork: .75,   // 이 압력 사이에서 낼 수 있는 최고 속도가 0 → 100%
+  vmax: 40,            // 최고 속도 (m/s)
+};
+
+/* 도구 퀵슬롯 */
+export const TOOLS = [
+  { id: 'wrench', name: '렌치', key: '1', hint: '고장 난 곳 수리 (다음 단계)' },
+  { id: 'shovel', name: '삽', key: '2', hint: '연료 상자에서 퍼서 화실에 넣기' },
+  { id: 'pistol', name: '권총', key: '3', hint: '좌클릭 사격' },
+  { id: 'hook', name: '갈고리', key: '4', hint: '떠다니는 재료를 겨냥해 좌클릭' },
+];

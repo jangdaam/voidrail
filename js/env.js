@@ -33,7 +33,7 @@ export function updateEnv(dt) {
   glowMat.color.setScalar(.6 + .55 * night); crystalMat.color.setScalar(.75 + .35 * night);
   glassMat.opacity = .1 + .12 * night; glassMat.color.copy(GLASS_DAY).lerp(GLASS_NIGHT, night);
   headLight.intensity = 260 * night;
-  lamps.forEach(l => l.intensity = l.userData.dayI + 8 * night);
+  lamps.forEach(l => l.intensity = l.userData.dayI + (l.userData.nightI ?? 8) * night);
   stars.material.opacity = clamp(night * 1.2 - .1, 0, 1);
   sunSprite.material.color.copy(SUNW).lerp(SUNO, S.dusk); sunSprite.material.opacity = clamp(elev * 6 + .6, 0, 1);
   moonSprite.material.opacity = clamp(-elev * 6 + .6, 0, 1);

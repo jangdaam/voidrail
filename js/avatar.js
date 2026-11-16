@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { C, prep, M, landMat } from './geo.js';
 import { lerpAngle } from './net/interp.js';
+import { buildTool, TOOL_IDS } from './toolmodels.js';
 
 const SKIN = C('#f5d7b8'), PANTS = C('#3f4a5c'), BOOT = C('#2e2b34'), PACK = C('#5b6b3a');
 const part = (geo, col, m) => { const mesh = new THREE.Mesh(prep(geo, col, m), landMat); mesh.castShadow = true; return mesh; };
@@ -42,9 +43,23 @@ export class Avatar {
     this.body.add(this.armL, this.armR); this.root.add(this.legL, this.legR);
     this.legL.position.y = this.legR.position.y = .9;
     if (name) { this.tag = nameTag(name, color); this.root.add(this.tag); }
+    this.tool = -1; this.toolLoaded = false; this.toolModels = [];
     this.phase = 0; this.yaw = 0; this.j = { legL: 0, legR: 0, armL: 0, armR: 0, armLz: 0, armRz: 0, lean: 0, bob: 0, head: 0 };
   }
   setName(name) { if (this.tag) { this.root.remove(this.tag); this.tag.material.map.dispose(); } this.tag = nameTag(name, this.color); this.root.add(this.tag); }
+  /** 손에 든 도구 (0 렌치 · 1 삽 · 2 권총 · 3 갈고리, -1 없음) */
+  setTool(i, loaded = false) {
+    if (i !== this.tool) {
+      if (!this.toolModels.length) for (const id of TOOL_IDS) {
+        const t = buildTool(id); t.g.visible = false;
+        t.g.position.set(0, -.55, .05); t.g.rotation.x = -Math.PI / 2 + .25;   // 팔 끝에서 앞쪽으로
+        if (id === 'shovel') { t.g.position.set(0, -.55, .3); }
+        this.armR.add(t.g); this.toolModels.push(t);
+      }
+      this.toolModels.forEach((t, k) => t.g.visible = k === i); this.tool = i;
+    }
+    if (this.toolModels[1]?.parts.load) this.toolModels[1].parts.load.visible = !!loaded;
+  }
   /** st: { speed(수평 m/s), vy, grounded, inGrav, yaw, pitch } */
   update(dt, st, time) {
     const k = 1 - Math.exp(-dt * 14), j = this.j, T = {};
@@ -61,6 +76,7 @@ export class Avatar {
       T.lean = .08 * walk; T.legL = s; T.legR = -s; T.armL = -s * .8; T.armR = s * .8; T.armLz = -.08; T.armRz = .08;
       T.bob = Math.abs(Math.cos(this.phase)) * .05 * walk + Math.sin(time * 2) * .006; T.head = 0;
     }
+    if (this.tool >= 0 && st.inGrav) { T.armR = T.armR * .35 - .75; T.armRz = .12; }   // 도구 든 팔은 앞으로
     for (const key in T) j[key] += (T[key] - j[key]) * k;
     this.body.rotation.x = j.lean; this.body.position.y = .9 + j.bob;
     this.legL.rotation.x = j.legL; this.legR.rotation.x = j.legR;

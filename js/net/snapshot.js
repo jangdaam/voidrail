@@ -2,6 +2,9 @@
 // [0] u8 type  [1] u8 flags  [2] u16 seq  [4] f64 time  [12..36) f32 x,y,z,vx,vy,vz  [36] f32 yaw  [40] f32 pitch
 export const SNAP_BYTES = 44;
 export const FLAG_GROUND = 1, FLAG_GRAV = 2, FLAG_SPRINT = 4;
+/* 비트 3–4: 손에 든 도구 번호, 비트 5: 삽에 장작 */
+export const toolFlags = (tool, loaded) => ((tool & 3) << 3) | (loaded ? 32 : 0);
+export const flagTool = f => (f >> 3) & 3, flagLoaded = f => !!(f & 32);
 
 export function encodeSnap(seq, t, p, v, yaw, pitch, flags) {
   const buf = new ArrayBuffer(SNAP_BYTES), dv = new DataView(buf);

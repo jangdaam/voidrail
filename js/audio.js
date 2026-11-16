@@ -61,9 +61,17 @@ export function whistle() {
   noiseBurst(2500, .5, 1.2, .04, 'highpass');
 }
 export function chime(type) {
-  if (!ctx) return; const base = type === 'crystal' ? 1047 : type === 'wood' ? 659 : 784;
+  if (!ctx) return; const base = type === 'wood' ? 659 : 784;
   tone(base, .35, .12, 'triangle'); tone(base * 1.5, .45, .09, 'sine', .07);
 }
+/* 도구·보일러 소리 */
+export function hiss() { if (!ctx) return; noiseBurst(5200, .7, .55, .07, 'highpass'); }
+export function scoopSnd() { if (!ctx) return; noiseBurst(900, 1.5, .18, .16); tone(140, .12, .12, 'triangle', .02, .8); }
+export function stokeSnd() { if (!ctx) return; noiseBurst(300, .6, .5, .2, 'lowpass'); for (let i = 0; i < 6; i++) noiseBurst(2500 + Math.random() * 2000, 3, .04, .08, 'bandpass', .1 + Math.random() * .5); }
+export function gunSnd() { if (!ctx) return; noiseBurst(1400, .5, .25, .45, 'lowpass'); tone(110, .18, .3, 'square', 0, .4); noiseBurst(3500, 1, .4, .05, 'highpass', .05); }
+export function hookSnd(latch) { if (!ctx) return; if (latch) { tone(1200, .08, .12, 'square'); noiseBurst(2200, 4, .06, .1); } else { noiseBurst(1800, 1.2, .25, .12, 'bandpass'); tone(400, .25, .06, 'sawtooth', 0, 2); } }
+export function clankSnd() { if (!ctx) return; tone(1450, .35, .1, 'triangle'); tone(2210, .25, .06, 'sine'); noiseBurst(3000, 2, .05, .1); }
+export function clickSnd() { if (!ctx) return; tone(900, .04, .06, 'square'); }
 export function biomeSting() { if (!ctx) return; const ch = BIOMES[S.biomeIdx].chord; ch.forEach((f, i) => tone(f * 2, 1.6, .05, 'sine', i * .18)); }
 /** 매 프레임: 속도·무중력 여부에 따라 바람, 밤에 패드 필터 낮춤 */
 export function updateAudio(inVoid, inside) {

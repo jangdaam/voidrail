@@ -1,7 +1,8 @@
 // HUD, 입력, 버튼, 로딩 페이드, 토스트, 자동 품질 조절, 디버그 패널
 import { renderer } from './scene.js';
-import { player, ext, nearLever } from './player.js';
-import { LEVER_POS } from './train.js';
+import { player, ext } from './player.js';
+import { interact, promptText } from './interact.js';
+import { selectTool, useTool, toolPrompt } from './tools.js';
 import { queueLength } from './world.js';
 import { QUALITY, QUALITY_ORDER } from './config.js';
 import { clamp } from './noise.js';
@@ -16,7 +17,8 @@ export function initUI(handlers) {
     S.keys[e.code] = true;
     if (e.code === 'Space') e.preventDefault();
     if (e.repeat || !S.started) return;
-    if (e.code === 'KeyE' && nearLever(LEVER_POS)) H.toggleTrain();
+    if (e.code === 'KeyE') interact();
+    if (/^Digit[1-4]$/.test(e.code)) selectTool(+e.code[5] - 1);
     if (e.code === 'KeyX') H.faster(); if (e.code === 'KeyZ') H.slower();
     if (e.code === 'KeyR') H.reelIn();
     if (e.code === 'KeyV') setView(S.viewMode === 'fp' ? 'ext' : 'fp');
@@ -28,14 +30,17 @@ export function initUI(handlers) {
   const cvs = renderer.domElement;
   let dragging = false;
   document.addEventListener('pointerlockchange', () => { S.locked = document.pointerLockElement === cvs; updateResume(); });
-  cvs.addEventListener('pointerdown', () => { dragging = true; if (!S.locked) tryLock(); });
+  cvs.addEventListener('pointerdown', e => {
+    if (S.locked && S.viewMode === 'fp' && e.button === 0) { useTool(); return; }
+    dragging = true; if (!S.locked) tryLock();
+  });
   addEventListener('pointerup', () => dragging = false);
   addEventListener('mousemove', e => {
     if (!S.locked && !dragging) return;
     if (S.viewMode === 'fp') { player.yaw -= e.movementX * .0022; player.pitch = clamp(player.pitch - e.movementY * .0022, -1.5, 1.5); }
     else { ext.yaw += e.movementX * .006; ext.pitch = clamp(ext.pitch + e.movementY * .004, -.5, 1.1); }
   });
-  cvs.addEventListener('wheel', e => { if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
+  cvs.addEventListener('wheel', e => { if (S.viewMode === 'fp' && S.started) { selectTool(S.tool + (e.deltaY > 0 ? 1 : -1)); e.preventDefault(); return; } if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
 
   $('go').onclick = () => { $('start').style.display = 'none'; S.started = true; H.start(); tryLock(); updateResume(); };
   $('bView').onclick = () => setView(S.viewMode === 'fp' ? 'ext' : 'fp');
@@ -95,9 +100,11 @@ export function updateHUD(dt) {
   const m = Math.floor(S.tod * 1440); $('sTime').textContent = '시각 · ' + String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
   $('mode').textContent = player.inGrav ? '⚙ ' + player.car.name : '🪢 무중력 유영 — R: 안전줄 감기';
   invFlash = Math.max(0, invFlash - dt);
-  const iv = S.inv; $('inv').textContent = `고철 ${iv.scrap} · 목재 ${iv.wood} · 결정 ${iv.crystal}`;
+  const iv = S.inv; $('inv').textContent = `배낭 · 목재 ${iv.wood} · 고철 ${iv.scrap}`;
   $('inv').classList.toggle('flash', invFlash > 0);
-  $('prompt').textContent = S.viewMode === 'fp' && nearLever(LEVER_POS) ? 'E: ' + (S.targetSpeed > 0 ? '정지' : '출발') + ' · Z/X: 속도 조절' : '';
+  $('prompt').textContent = promptText() || toolPrompt();
+  $('boil').textContent = `🔥 불 ${Math.round(S.heat * 100)}% · 압력 ${Math.round(S.pressure * 100)}%`;
+  $('boil').classList.toggle('low', S.pressure < .3);
   $('cross').style.display = S.viewMode === 'fp' && S.started ? 'block' : 'none';
   if (S.debug) {
     const info = renderer.info.render;

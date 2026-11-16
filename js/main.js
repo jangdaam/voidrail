@@ -7,13 +7,16 @@ import { arcScale, trackPos, shuffleOrder } from './track.js';
 import { renderer, scene, camera, sky, stars, sunSprite, moonSprite, sun, moon, updateSea, applyQuality } from './scene.js';
 import { updateChunks, processQueue, resetWorld, animateWorld, updatePickups, queueLength, taken, removeItem } from './world.js';
 import { placeTrain, toTrainCoord, trainToWorld, HALF_W } from './train.js';
-import { player, updatePlayer, updateCamera, updateAvatar, playerWorld, reelIn } from './player.js';
+import { player, updatePlayer, updateCamera, updateAvatar, playerWorld, reelIn, localAvatar } from './player.js';
 import { updateEnv, sunDir, setBiomeListener } from './env.js';
 import { updateWeather } from './weather.js';
-import { updateSmoke, smokeBurst, updateWhale, hideWhale, pickupFx, updateFx } from './fx.js';
-import { initAudio, setMuted, setChord, clack, chuff, whistle, chime, biomeSting, updateAudio } from './audio.js';
+import { updateSmoke, smokeBurst, steamPuff, updateWhale, hideWhale, pickupFx, updateFx } from './fx.js';
+import { initAudio, setMuted, setChord, clack, chuff, whistle, chime, biomeSting, updateAudio, hiss } from './audio.js';
 import { initUI, updateHUD, banner, toast, fade, flashInv, setMuteLabel, showError } from './ui.js';
-import { Session, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT } from './net/session.js';
+import { Session, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT, toolFlags } from './net/session.js';
+import { boiler, updateBoiler, maxSpeed, boilerState, applyBoilerState } from './boiler.js';
+import { updateInteract } from './interact.js';
+import { initTools, updateTools, renderViewmodel, applyRemoteAct } from './tools.js';
 import { makeTransport } from './net/transport.js';
 import { now } from './net/clock.js';
 import { initMPUI, setPeers, setMPStatus } from './mpui.js';
@@ -41,22 +44,24 @@ const netHooks = {
     toTrainCoord(player.car, player.p, _tp);
     snapOut.v = _vReal.copy(player.v).multiplyScalar(timeScale);   // 게임 시간 → 실제 시간 기준 속도
     snapOut.yaw = player.yaw; snapOut.pitch = player.pitch;
-    snapOut.flags = (player.grounded ? FLAG_GROUND : 0) | (player.inGrav ? FLAG_GRAV : 0) | (S.keys.ShiftLeft ? FLAG_SPRINT : 0);
+    snapOut.flags = (player.grounded ? FLAG_GROUND : 0) | (player.inGrav ? FLAG_GRAV : 0) | (S.keys.ShiftLeft ? FLAG_SPRINT : 0) | toolFlags(S.tool, S.shovelLoad);
     return snapOut;
   },
   trainToWorld,
-  getTrain: () => ({ s: S.sTrain, speed: S.loading ? 0 : S.speed * timeScale, targetSpeed: S.targetSpeed, tod: S.tod, timeMul: S.timeMul, seed: getSeed() }),
+  getTrain: () => ({ s: S.sTrain, speed: S.loading ? 0 : S.speed * timeScale, targetSpeed: S.targetSpeed, tod: S.tod, timeMul: S.timeMul, seed: getSeed(), boiler: boilerState() }),
   applyTrain(st, ageMs) {
     const predicted = st.s + st.speed * Math.max(0, ageMs) / 1000 / arcScale(st.s);
     if (st.seed !== getSeed()) { setSeed(st.seed); shuffleOrder(); S.biomeName = ''; S.sTrain = predicted; regenerate(); toast('기관사의 세계로 맞췄어요'); }
     netTrain = { s: st.s, speed: st.speed, at: now() - ageMs };
     if (S.targetSpeed !== st.targetSpeed) S.targetSpeed = st.targetSpeed;
+    applyBoilerState(st.boiler);
     S.timeMul = st.timeMul; todTarget = st.tod + (ageMs / 1000) * st.timeMul / 240;
   },
   onControl(ts, by) { const was = S.targetSpeed; S.targetSpeed = ts; if (was === 0 && ts > 0) { whistle(); smokeBurst(10); toast(`${by} 님이 기차를 출발시켰어요`); } else if (ts === 0 && was > 0) toast(`${by} 님이 기차를 세웠어요`); },
   onPick(id) { const r = removeItem(id); if (r) pickupFx(r.type, r.pos, true); },
   takenList: () => [...taken].slice(-400),
   applyTaken(ids) { for (const id of ids) removeItem(id); },
+  onAct(d) { applyRemoteAct(d); },
   onPeers: list => setPeers(list, session),
   log: msg => toast(msg),
 };
@@ -79,7 +84,10 @@ const handlers = {
   start() { initAudio(); setMuteLabel(); whistle(); smokeBurst(10); },
   toggleTrain() {
     if (S.targetSpeed > 0) { S.lastTarget = S.targetSpeed; S.targetSpeed = 0; }
-    else { S.targetSpeed = S.lastTarget || 6; whistle(); smokeBurst(14); S.shake = Math.max(S.shake, .08); }
+    else {
+      S.targetSpeed = S.lastTarget || 6; whistle(); smokeBurst(14 * (.3 + .7 * S.heat)); S.shake = Math.max(S.shake, .08);
+      if (maxSpeed() < 2) toast('압력이 부족해요 — 화실에 장작을 넣어 압력을 올리세요');
+    }
     controlChanged();
   },
   faster() { const was = S.targetSpeed; S.targetSpeed = Math.min(40, S.targetSpeed + 4); if (was === 0) { whistle(); smokeBurst(10); } controlChanged(); },
@@ -100,6 +108,7 @@ const handlers = {
 setBiomeListener((B, idx) => { banner(B.name); setChord(idx); if (S.started && !S.loading) biomeSting(); });
 
 initUI(handlers);
+initTools({ toggleTrain: handlers.toggleTrain, toast, flashInv, act: d => session?.sendAct(d) });
 initMPUI(handlers, params);
 shuffleOrder();
 updateChunks(S.sTrain);
@@ -131,7 +140,10 @@ function frame() {
   } else processQueue(QUALITY[S.quality].budget);
 
   // 기차 이동 (+ 접속 중이면 기관사 기준으로 보정)
-  S.speed += (S.targetSpeed - S.speed) * Math.min(1, dt * .8);
+  // 보일러: 압력이 낼 수 있는 속도까지만 (압력이 떨어지면 서서히 감속)
+  updateBoiler(dt, { remoteAuthority: isClient(), vent: () => { hiss(); steamPuff(); steamPuff(); }, warn: toast });
+  const want = Math.min(S.targetSpeed, maxSpeed());
+  S.speed += (want - S.speed) * Math.min(1, dt * (want < S.speed ? .35 : .8));
   const moveS = S.loading && !isClient() ? 0 : S.speed * dt / arcScale(S.sTrain);
   const before = S.sTrain;
   S.sTrain += moveS;
@@ -149,7 +161,9 @@ function frame() {
   if (S.started) updatePlayer(dt);
   playerWorld(wp);
   updateCamera(dt, snap); snap = false;
+  localAvatar.setTool(S.tool, S.shovelLoad);
   updateAvatar(wp, dt);
+  updateInteract(); updateTools(dt);
   for (const p of updatePickups(wp, picks)) { S.inv[p.type]++; pickupFx(p.type, p.pos); chime(p.type); flashInv(); session?.sendPick(p.id); }
   session?.update(dt, S.time);
 
@@ -161,12 +175,12 @@ function frame() {
   moon.position.copy(_P).addScaledVector(sunDir, -220); moon.target.position.copy(_P);
   updateSea(false); animateWorld(S.time, dt); updateSmoke(dt); updateWhale(dt); updateWeather(dt); updateFx(dt);
   updateAudio(!player.inGrav, inside);
-  if (!NO_RENDER) renderer.render(scene, camera);
+  if (!NO_RENDER) { renderer.render(scene, camera); renderViewmodel(renderer); }
   updateHUD(dt);
 }
 placeTrain();
 frame();
 
 // 개발·테스트용 훅
-window.__debug = { S, player, reelIn, setView: v => import('./ui.js').then(m => m.setView(v)), regenerate, get session() { return session; }, joinRoom };
+window.__debug = { S, player, boiler, maxSpeed, reelIn, setView: v => import('./ui.js').then(m => m.setView(v)), regenerate, get session() { return session; }, joinRoom };
 import('./train.js').then(t => { window.__coplanar = t.coplanarReport; if (S.debug) console.info('겹친 면 자동 정리:', JSON.stringify(t.coplanarReport)); });
