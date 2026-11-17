@@ -23,10 +23,10 @@ class CarB {
   constructor() { this.solid = []; this.glow = []; this.glass = []; this.boxes = []; this.vis = []; }
   /** 시각 상자는 바로 만들지 않고 기록 → build() 에서 겹친 면 정리 후 생성 */
   box(x0, x1, y0, y1, z0, z1, col, o = {}) {
-    const { collide = true, visual = true, kind = 'solid', raw = false } = o;
+    const { collide = true, visual = true, kind = 'solid', raw = false, glass = false } = o;
     if (!raw) { z0 = zmap(z0); z1 = zmap(z1); }
     if (visual) this.vis.push({ min: [x0, y0, z0], max: [x1, y1, z1], col, kind });
-    if (collide) this.boxes.push({ min: [x0, y0, z0], max: [x1, y1, z1] });
+    if (collide) this.boxes.push({ min: [x0, y0, z0], max: [x1, y1, z1], glass });
   }
   /**
    * Z-파이팅 원천 차단: 같은 방향을 보는 두 면이 같은 평면에서 겹치면(면적 > 0)
@@ -83,7 +83,7 @@ class CarB {
     for (const [a, b] of segs) {
       this.box(a, b, F, F + 1, t0, t1, col);
       this.box(a, b, F + 1.9, F + 2.6, t0, t1, col);
-      this.box(a, b, F + 1, F + 1.9, t0, t1, col, { visual: false });
+      this.box(a, b, F + 1, F + 1.9, t0, t1, col, { visual: false, glass: true });
       const n = Math.max(1, Math.round((b - a) / 1.5));
       for (let i = 0; i <= n; i++) { const x = clamp(a + (b - a) * i / n, a + .08, b - .08); this.box(x - .08, x + .08, F + 1.04, F + 1.9, t0 - .03, t1 + .03, col, { collide: false }); }
       this.box(a, b, F + .97, F + 1.04, t0 - .05, t1 + .05, CREAM, { collide: false });   // 창틀
@@ -163,7 +163,7 @@ for (const z of [-1.1, 1.1]) D.box(3.5, 3.56, F + .45, F + .75, z - .22, z + .22
 D.sideWall(1.64, -3.5, 2.2, [], IRON); D.sideWall(-1.64, -3.5, 2.2, [], IRON);
 D.endWall(-3.5, IRON);
 D.box(2.14, 2.26, F, F + 1.0, -1.7, 1.7, IRON); D.box(2.14, 2.26, F + 1.95, F + 2.6, -1.7, 1.7, IRON);   // 앞벽: 아래·위만 막고 가운데는 유리
-D.box(2.14, 2.26, F + 1.0, F + 1.95, -1.7, 1.7, IRON, { visual: false });
+D.box(2.14, 2.26, F + 1.0, F + 1.95, -1.7, 1.7, IRON, { visual: false, glass: true });
 for (const z of [-1.62, -.55, .55, 1.62]) D.box(2.13, 2.27, F + 1.0, F + 1.95, z - .05, z + .05, IRON, { collide: false });
 D.box(2.19, 2.21, F + 1.0, F + 1.95, -1.6, 1.6, GLOWC, { collide: false, kind: 'glass' });
 D.roof(-3.5, 2.2, IRON_D);
@@ -174,6 +174,21 @@ D.box(1.47, 1.5, F + .5, F + .86, -1.2, -.25, CHAR, { collide: false });        
 D.box(-3.3, -2.5, F, F + .5, 1.0, 1.58, IRON_D);                                         // 공구 상자
 D.box(-.15, .15, F + 2.2, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
 const GRAB = C('#7d7553');
+/* 지붕 난간: 옆(그리고 원하면 앞·뒤 끝)에 낮은 시각 난간 + 높은 충돌벽 */
+function roofRails(B, x0, x1, rear, front) {
+  const RY = F + 2.92, raw = { raw: true };
+  for (const sd of [-1, 1]) {
+    B.box(x0, x1, F + 2.8, RY + 1.2, sd > 0 ? 2.34 : -2.45, sd > 0 ? 2.45 : -2.34, DARK, { visual: false, raw: true });
+    B.box(x0, x1, RY + .58, RY + .64, sd > 0 ? 2.36 : -2.42, sd > 0 ? 2.42 : -2.36, DARK, { collide: false, raw: true });
+    for (let x = x0 + .1; x <= x1 - .05; x += 1.36) B.box(x - .035, x + .035, F + 2.8, RY + .6, sd > 0 ? 2.36 : -2.42, sd > 0 ? 2.42 : -2.36, DARK, { collide: false, raw: true });
+  }
+  for (const [on, x] of [[rear, x0], [front, x1]]) {
+    if (!on) continue; const a = x < 0 ? x - .02 : x - .08, b = a + .1;
+    B.box(a, b, F + 2.8, RY + 1.2, -2.45, 2.45, DARK, { visual: false, raw: true });
+    B.box(a, b, RY + .58, RY + .64, -2.42, 2.42, DARK, { collide: false, raw: true });
+    for (let z = -2.4; z <= 2.41; z += .8) B.box(a, b, F + 2.8, RY + .6, z - .035, z + .035, DARK, { collide: false, raw: true });
+  }
+}
 /* 바깥 손잡이 봉·발판·지붕 가장자리 낙수 난간 (안드로이드가 잡는 부품. 사람도 보기에 '잡을 데'로 읽히게) */
 function exteriorGrips(B, bars, x0, x1, roofTo) {
   for (const s of [1, -1]) {
@@ -188,6 +203,7 @@ function exteriorGrips(B, bars, x0, x1, roofTo) {
   }
 }
 exteriorGrips(D, [-3.1, -.9], -3.5, 2.2, 2.2);
+roofRails(D, -3.5, 2.2, true, false);
 export const driveCar = finishCar(D, -3.5, 3.5, [-2.5, -1.4, 1.4, 2.5], '운전차');
 driveCar.enclosed = true;
 export const locoCar = driveCar;
@@ -229,6 +245,18 @@ for (const sd of [-1, 1]) {
   K.box(-3.5, 3.5, RY + .58, RY + .64, sd > 0 ? 1.76 : -1.82, sd > 0 ? 1.82 : -1.76, DARK, { collide: false });
   for (let x = -3.4; x <= 3.4; x += 1.36) K.box(x - .035, x + .035, F + 2.8, RY + .6, sd > 0 ? 1.76 : -1.82, sd > 0 ? 1.82 : -1.76, DARK, { collide: false });
 }
+for (const x of [-3.52, 3.42]) {                                                           // 앞·뒤 끝 난간
+  K.box(x, x + .1, F + 2.8, RY + 1.2, -1.85, 1.85, DARK, { visual: false });
+  K.box(x, x + .1, RY + .58, RY + .64, -1.82, 1.82, DARK, { collide: false });
+  for (const z of [-1.8, -.9, 0, .9, 1.8]) K.box(x, x + .1, F + 2.8, RY + .6, z - .035, z + .035, DARK, { collide: false });
+}
+// 맨 뒤 객실 문 밖: 작은 발코니 난간 (문을 열고 나가도 떨어지지 않게)
+K.box(-4.18, -4.1, F, F + RAIL_H, -.95, .95, DARK, { visual: false, raw: true });
+K.box(-4.18, -4.1, F + .92, F + 1.0, -.95, .95, DARK, { collide: false, raw: true });
+for (const z of [-.92, 0, .92]) K.box(-4.18, -4.1, F - .1, F + 1.0, z - .035, z + .035, DARK, { collide: false, raw: true });
+for (const sd of [-1, 1]) { K.box(-4.18, -3.5, F, F + RAIL_H, sd > 0 ? .9 : -.98, sd > 0 ? .98 : -.9, DARK, { visual: false, raw: true });
+  K.box(-4.18, -3.5, F + .92, F + 1.0, sd > 0 ? .9 : -.98, sd > 0 ? .98 : -.9, DARK, { collide: false, raw: true }); }
+K.box(-4.18, -3.5, F - .12, F, -.98, .98, IRON_D, { raw: true });
 K.box(2.3, 3.2, RY, RY + .07, -1.6, -.9, COPPER_D, { collide: false });                    // 해치 틀
 K.box(2.4, 3.1, RY + .07, RY + .09, -1.5, -1.0, CHAR, { collide: false });
 K.box(-1.0, -.2, F + 2.8, RY + .55, -.4, .4, CHAR2);                                       // 포탑 받침
@@ -313,11 +341,11 @@ for (const s of [1, -1]) {
   registerGrip(powerCar, 'rail', [-3.0, F + .97, s * 2.33], [3.0, F + .97, s * 2.33], [0, 0, s], F);
   for (const x of [-3.1, -.9]) registerGrip(driveCar, 'bar', [x, F + .4, s * 2.4], [x, F + 1.9, s * 2.4], [0, 0, s], null);
   for (const x of [-3.0, 0, 3.0]) registerGrip(cabinCar, 'bar', [x, F + .4, s * 2.4], [x, F + 1.9, s * 2.4], [0, 0, s], null);
-  registerGrip(driveCar, 'gutter', [-3.2, F + 2.84, s * 2.48], [1.9, F + 2.84, s * 2.48], [0, 0, s], ROOF_Y);
+  registerGrip(driveCar, 'gutter', [-3.2, F + 2.84, s * 2.48], [1.9, F + 2.84, s * 2.48], [0, 0, s], F + 2.8).over = .7;
   registerGrip(cabinCar, 'gutter', [-3.2, F + 2.84, s * 2.48], [3.2, F + 2.84, s * 2.48], [0, 0, s], ROOF_Y).over = .7;     // 객실 지붕엔 낮은 난간이 있어 그 위로 넘어옴
 }
-registerGrip(driveCar, 'ledge', [-3.6, F + 2.8, -1.3], [-3.6, F + 2.8, 1.3], [-1, 0, 0], ROOF_Y);       // 운전차 뒤 끝 (배터리 칸 쪽)
-registerGrip(cabinCar, 'ledge', [3.6, F + 2.8, -1.3], [3.6, F + 2.8, 1.3], [1, 0, 0], ROOF_Y);          // 객실 앞 끝 (배터리 칸 쪽)
+registerGrip(driveCar, 'ledge', [-3.6, F + 2.8, -1.3], [-3.6, F + 2.8, 1.3], [-1, 0, 0], F + 2.8).over = .7;       // 운전차 뒤 끝 (배터리 칸 쪽)
+registerGrip(cabinCar, 'ledge', [3.6, F + 2.8, -1.3], [3.6, F + 2.8, 1.3], [1, 0, 0], ROOF_Y).over = .7;          // 객실 앞 끝 (배터리 칸 쪽)
 /** 선분 위에서 p(차량 로컬)에 가장 가까운 점 */
 export function gripPoint(g, p, out) {
   const ax = g.b.x - g.a.x, ay = g.b.y - g.a.y, az = g.b.z - g.a.z, L2 = ax * ax + ay * ay + az * az || 1;
@@ -334,9 +362,58 @@ export const lamps = [[driveCar, 0, F + 2.0, 0, 0xc9dcf0], [cabinCar, 0, F + 2.0
   .map(([car, x, y, z, c]) => { const l = new THREE.PointLight(c, 5, 11, 2); l.position.set(x, y, z); car.g.add(l); return l; });
 export const CHIMNEY = new THREE.Vector3(-2.45, F + 1.6, -1.65);          // 발전기 배기구
 
-/* 객차 사이 주름막: 양쪽이 모두 막힌 차량일 때만 (시작 기차엔 없음) */
-const bellows = [];
-function placeBellows() {}
+/* ================= 객차 사이 연결 통로 =================
+ * 차량은 선로 곡선을 따라 따로 기울고 꺾이므로 끝과 끝 사이가 벌어졌다 좁아졌다 한다(그 움직임은 살림).
+ * 매 프레임 두 차량의 끝점을 이어 발판·옆 난간을 늘였다 줄였다 하고, 플레이어 충돌에도 넣는다 → 틈으로 떨어지지 않음. */
+export const JOINTS = [];
+const jPlate = prep(new THREE.BoxGeometry(1, .1, 1.7), IRON_D, M(0, -.05, 0)), jRail = merged([
+  ...[-1, 1].flatMap(s => [prep(new THREE.BoxGeometry(1, .06, .06), DARK, M(0, .97, s * .9)), prep(new THREE.BoxGeometry(1, .05, .05), DARK, M(0, .5, s * .9)),
+    prep(new THREE.BoxGeometry(1, .9, .02), C('#24272b'), M(0, .5, s * .91))]),                    // 옆 가림막(주름막 느낌)
+]);
+for (const [a, b] of [[driveCar, powerCar], [powerCar, cabinCar]]) {
+  const g = new THREE.Group(), plate = new THREE.Mesh(jPlate, landMat), rail = new THREE.Mesh(jRail, landMat);
+  plate.receiveShadow = true; g.add(plate, rail); scene.add(g);
+  JOINTS.push({ a, b, g, plate, rail, inv: new THREE.Matrix4(), x0: -1, x1: 1, enclosed: false,
+    boxes: [{ min: [0, -.14, -.86], max: [0, -.004, .86] }, { min: [0, -.1, .86], max: [0, 1.25, .97] }, { min: [0, -.1, -.97], max: [0, 1.25, -.86] }] });
+}
+const _ja = new THREE.Vector3(), _jb = new THREE.Vector3(), _jx = new THREE.Vector3(), _jy = new THREE.Vector3(), _jz = new THREE.Vector3(), _jm = new THREE.Matrix4();
+function placeBellows() {
+  for (const j of JOINTS) {
+    _ja.set(j.a.x0, F, 0).applyMatrix4(j.a.g.matrixWorld); _jb.set(j.b.x1, F, 0).applyMatrix4(j.b.g.matrixWorld);
+    const L = _ja.distanceTo(_jb);
+    _jx.subVectors(_ja, _jb).normalize();
+    _jy.set(0, 1, 0).applyQuaternion(j.a.g.quaternion).add(_jz.set(0, 1, 0).applyQuaternion(j.b.g.quaternion));
+    _jz.crossVectors(_jx, _jy).normalize(); _jy.crossVectors(_jz, _jx).normalize();
+    j.g.position.lerpVectors(_ja, _jb, .5); j.g.quaternion.setFromRotationMatrix(_jm.makeBasis(_jx, _jy, _jz));
+    j.plate.scale.x = L + .9; j.rail.scale.x = Math.max(.05, L - .02);
+    j.g.updateMatrixWorld(true); j.inv.copy(j.g.matrixWorld).invert();
+    const h = L / 2; j.x0 = -h - .45; j.x1 = h + .45;
+    j.boxes[0].min[0] = -h - .45; j.boxes[0].max[0] = h + .45;
+    for (const k of [1, 2]) { j.boxes[k].min[0] = -h - .02; j.boxes[k].max[0] = h + .02; }
+  }
+}
+
+/* ================= 열차에 맞는 광선 =================
+ * 총알·탐조등이 객차를 뚫지 않게. glass: 창(유리)도 막을지 */
+const _ro = new THREE.Vector3(), _rd = new THREE.Vector3();
+export function rayTrain(origin, dir, maxDist, glass = false) {
+  let best = maxDist;
+  for (const c of [...CARS, ...JOINTS]) {
+    _ro.copy(origin).applyMatrix4(c.inv); _rd.copy(dir).transformDirection(c.inv);
+    for (const b of c.boxes) {
+      if (b.glass && !glass) continue;
+      let t0 = 0, t1 = best;
+      for (let ax = 0; ax < 3; ax++) {
+        const o = ax === 0 ? _ro.x : ax === 1 ? _ro.y : _ro.z, dd = ax === 0 ? _rd.x : ax === 1 ? _rd.y : _rd.z;
+        if (Math.abs(dd) < 1e-9) { if (o < b.min[ax] || o > b.max[ax]) { t0 = 1e9; break; } continue; }
+        let ta = (b.min[ax] - o) / dd, tb = (b.max[ax] - o) / dd; if (ta > tb) { const s = ta; ta = tb; tb = s; }
+        if (ta > t0) t0 = ta; if (tb < t1) t1 = tb; if (t0 > t1) break;
+      }
+      if (t0 <= t1 && t0 > 1e-3 && t0 < best) best = t0;
+    }
+  }
+  return best;
+}
 
 /* 위치 갱신 */
 export function placeTrain() {

@@ -20,7 +20,7 @@ export function initUI(handlers) {
     if (e.code === 'KeyQ') interactAlt();
     if (e.code === 'KeyF') H.kick();
     if (e.code === 'KeyP') import('./mpui.js').then(m => m.toggleMP());
-    if (e.code === 'KeyR') { if (player.inGrav) H.reload(); else H.reelIn(); }
+    if (e.code === 'KeyR' && !player.rope) H.reload();               // 매달려 있을 땐 R 을 누르고 있으면 줄이 감김(player.js)
     if (e.code === 'KeyV') setView(S.viewMode === 'fp' ? 'ext' : 'fp');
     if (e.code === 'KeyM') H.toggleMute();
     if (e.code === 'F3' || e.code === 'Backquote') { e.preventDefault(); setDebug(!S.debug); }
@@ -121,7 +121,7 @@ export function updateHUD(dt) {
   $('sBiome').textContent = S.region;
   $('sDist').textContent = '거리 · ' + (S.sTrain / 1000).toFixed(2) + ' km';
   $('sSpeed').textContent = `${S.dir > 0 ? '전진' : '후진'} ${S.notch}단${S.brake ? ' · 브레이크' : ''} · ${Math.round(Math.abs(S.speed) * 3.6)} km/h · 전력 ${S.battery.toFixed(0)}%${S.powered ? '' : ' (방전)'}`;
-  $('mode').textContent = player.inGrav ? '⚙ ' + player.car.name : '🪢 열차 밖 — R: 안전줄 감기';
+  $('mode').textContent = player.rope ? `🪢 안전줄 ${player.rope.L.toFixed(1)}m — R 누르고 있기: 감기` : '⚙ ' + player.car.name;
   if (S.debug) {
     const info = renderer.info.render, w = H.worldStats();
     $('debug').textContent = `FPS ${lastFps.toFixed(0)} · draw ${info.calls} · tris ${(info.triangles / 1000).toFixed(0)}k · 생성 대기 ${w.queue} · 품질 ${S.quality} · 청크 ${w.chunks} · 구역 ${w.sectors} · 지오메트리 ${w.geometries}\n` +

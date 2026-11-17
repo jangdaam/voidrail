@@ -6,7 +6,7 @@ import { scene, camera } from './scene.js';
 import { GUN, TURRET, KICK, HP } from './config.js';
 import { S } from './state.js';
 import { player, reelIn } from './player.js';
-import { cabinCar, turret, turretHeatMat } from './train.js';
+import { cabinCar, turret, turretHeatMat, rayTrain } from './train.js';
 import { rayAndroid, damageAndroid, kickAndroid } from './android.js';
 import { rayDrone, damageDrone, kickDrone } from './drone.js';
 import * as A from './audio.js';
@@ -44,10 +44,12 @@ const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _e = new THREE.Vector3
 
 function hitMark(kill) { g.mark = kill ? .3 : .14; const el = $('hitmark'); el.className = kill ? 'on kill' : 'on'; }
 function shoot(origin, dir, range, dmg, from) {
+  const full = range; range = rayTrain(origin, dir, range);          // 객차 벽·지붕·바닥에서 막힘 (유리창은 통과)
   const h = rayAndroid(origin, dir, range), hd = rayDrone(origin, dir, h ? h.dist : range);
   _e.copy(origin).addScaledVector(dir, hd ? hd.dist : h ? h.dist : range); tracer(from, _e);
+  if (!h && !hd && range < full) sparkAt(_e, 4, 0x9aa4ad);                // 철판에 튄 불꽃
   if (hd) { sparkAt(hd.point, 9, 0xffc080); hitMark(damageDrone(hd.drone, dmg, dir)); }
-  else if (h) { sparkAt(h.point, 7); hitMark(damageAndroid(h.droid, h.head ? dmg * 2 : dmg, dir, h.point)); }
+  else if (h) { sparkAt(h.point, 7); hitMark(damageAndroid(h.droid, h.head ? dmg * 2 : h.part === 'torso' ? dmg : dmg * .75, dir, h.point, h.part, h.side, h.joint)); }
 }
 export function startReload() { if (g.reload > 0 || g.ammo === GUN.mag) return; g.reload = GUN.reload; A.reloadSnd(false); }
 

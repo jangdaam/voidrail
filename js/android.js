@@ -19,8 +19,8 @@ import * as THREE from 'three';
 import { C, prep, M, merged } from './geo.js';
 import { scene, camera } from './scene.js';
 import { trackPos, frameAt, makeFrame } from './track.js';
-import { anchorsIn, doorLeaves } from './city.js';
-import { trainToWorld, carForTrainX, cabinCar, powerCar, driveCar, ROOF_Y, GRIPS, gripPoint } from './train.js';
+import { anchorsIn, doorLeaves, specAt } from './city.js';
+import { trainToWorld, carForTrainX, cabinCar, powerCar, driveCar, ROOF_Y, GRIPS, gripPoint, JOINTS } from './train.js';
 import { ANDROID as CFG, F } from './config.js';
 import { S } from './state.js';
 import * as A from './audio.js';
@@ -67,7 +67,7 @@ class Droid {
   constructor() {
     const mat = this.mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, emissive: 0xffffff, emissiveIntensity: 0 });
     const g = this.g = new THREE.Group(); g.visible = false; scene.add(g);
-    const mk = geo => { const m = new THREE.Mesh(geo, mat); g.add(m); return m; };
+    const mk = geo => { const m = new THREE.Mesh(geo, mat); m.castShadow = true; g.add(m); return m; };
     this.torso = mk(GEO.torso); this.pelvis = mk(GEO.pelvis); this.head = mk(GEO.head);
     this.ua = [mk(GEO.ua), mk(GEO.ua)]; this.fa = [mk(GEO.fa), mk(GEO.fa)]; this.hand = [mk(GEO.hand), mk(GEO.hand)];
     this.th = [mk(GEO.th), mk(GEO.th)]; this.sh = [mk(GEO.sh), mk(GEO.sh)]; this.foot = [mk(GEO.foot), mk(GEO.foot)];
@@ -244,7 +244,7 @@ function collideRag(p, q) {
   _rl.copy(p).applyMatrix4(driveCar.inv); const s = S.sTrain + _rl.x;
   trackPos(s, _rt); frameAt(s, RFR); _rv.subVectors(p, _rt);
   const lat = _rv.dot(RFR.R), up = _rv.dot(RFR.U);
-  if (Math.abs(lat) < 3.9 && up < .22 && up > -1.5) { p.addScaledVector(RFR.U, .22 - up); _rv.subVectors(p, q).multiplyScalar(.6); q.copy(p).sub(_rv); }
+  if (Math.abs(lat) < (specAt(s).tunnel ? 6 : 2.0) && up < .22 && up > -1.5) { p.addScaledVector(RFR.U, .22 - up); _rv.subVectors(p, q).multiplyScalar(.6); q.copy(p).sub(_rv); }
 }
 
 /* ================= 키 포즈 타임라인 =================
@@ -447,8 +447,12 @@ function poseLurch(d, swinging, run) {
 const FR = makeFrame(), _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _r = new THREE.Vector3(), _f = new THREE.Vector3();
 const used = new Map();
 function setWorldPose(d, pos, up, fwd) { d.g.position.copy(pos); _x.crossVectors(up, fwd).normalize(); d.g.quaternion.setFromRotationMatrix(_m.makeBasis(_x, up, fwd)); }
-function spawnAt(d, a) {
-  Object.assign(d, { alive: true, a, hp: CFG.hp, t: 0, st: 0, flash: 0, heading: 0, level: 'floor', cool: 0, grip: 1, stagger: 0, gait: 0, freeze: 0, rT: 0,
+/** 선로 좌표 (s, 위 u, 옆 r) → 월드 */
+function wpos(s, u, r, out) { frameAt(s, FR); return trackPos(s, out).addScaledVector(FR.U, u).addScaledVector(FR.R, r); }
+const ACTIVE = { runner: 1, spider: 1, climber: 1, track: 1, stairs: 1 };            // 처음부터 움직이는 무리 (눈이 켜진 채)
+function spawnAt(d, a, idx = 0) {
+  d.rs = undefined;
+  Object.assign(d, { alive: true, a: Object.assign({}, a), hp: CFG.hp, legHit: 0, kneel: 0, slipT: 0, decided: false, prepT: 0, go: false, t: 0, st: 0, flash: 0, heading: 0, level: 'floor', cool: 0, grip: 1, stagger: 0, gait: 0, freeze: 0, rT: 0,
     eyeOn: false, eyeT: 0, knockT: 0, side: a.side, phase: Math.random() * 9, swung: false, blendT: 0, sw: 0, swv: 0, roll: 0, rollTo: 0, trem: .004,
     limp: Math.random() < .5 ? 0 : 1, sprintCD: rnd(4, 9), gr: null, hold: 0, bangT: 0, plant: false, mode: '' });
   d.lock[0] = d.lock[1] = false;
@@ -456,7 +460,27 @@ function spawnAt(d, a) {
   frameAt(a.s, FR); trackPos(a.s, _p);
   if (a.type === 'door') { _p.addScaledVector(FR.R, a.side * 5.85).addScaledVector(FR.U, 1.35); _f.copy(FR.R).multiplyScalar(-a.side); setWorldPose(d, _p, FR.U, _f); d.state = 'inside'; poseStand(d, .05); }
   else if (a.type === 'ceil') { _p.addScaledVector(FR.U, 7.05).addScaledVector(FR.R, a.r); _f.copy(FR.T).multiplyScalar(-1); _r.copy(FR.U).multiplyScalar(-1); setWorldPose(d, _p, _r, _f); d.state = 'ceil'; poseCrawl(d, false); }
-  else { _p.addScaledVector(FR.R, a.side * 3.98).addScaledVector(FR.U, -1.0 - 2.3); _f.copy(FR.R).multiplyScalar(-a.side); setWorldPose(d, _p, FR.U, _f); d.state = 'under'; poseDangle(d); }
+  else if (a.type === 'under' || a.type === 'climber') { d.rs = a.s + idx * 2; wpos(d.rs, -1.0 - 2.3, a.side * 2.25, _p); _f.copy(FR.R).multiplyScalar(-a.side); setWorldPose(d, _p, FR.U, _f); d.state = a.type === 'under' ? 'under' : 'creep'; poseDangle(d); }
+  else if (a.type === 'runner') { d.rs = a.s + idx * rnd(1.2, 2.4); d.lat = a.side * (4.55 + rnd(-.2, .25)); d.state = 'run'; }
+  else if (a.type === 'track') { d.rs = a.s + idx * 3; d.lat = (idx ? -1 : 1) * rnd(0, .4); d.state = 'trackrun'; }
+  else if (a.type === 'spider') { d.rs = a.s + idx * 2; d.lat = a.r; d.state = 'spider'; }
+  else if (a.type === 'gantry') { d.rs = a.s + (idx ? .3 : -.3); d.lat = a.r + (idx ? -.9 : .4); wpos(d.rs, 10.05, d.lat, _p); _f.copy(FR.T).multiplyScalar(-1); setWorldPose(d, _p, FR.U, _f); d.state = 'perch'; poseStand(d, .8); }
+  else if (a.type === 'stairs') {                                     // 계단 아래에서 줄지어 올라옴: 경로 [계단 밑 → 계단 위 → 층계참 끝]
+    if (a.bot) {                                                      // 일반 구역: 작업장 바닥(멀리 아래)에서 옆으로 뻗은 계단을 올라옴
+      const B = a.bot, lane = (idx % 3 - 1) * .9;
+      d.path = [[a.s + lane, B.u + .05, a.side * (B.lat + 1 + idx * 1.2)], [a.s + lane, B.u + .05, a.side * B.lat], [a.s + lane * .8, 0, a.side * B.top], [a.s + (idx - 2) * .8, -.1, a.side * 2.75]];
+    } else
+    d.path = [[a.s + 7.8 + idx * 1.1, -5.55, a.side * (3.6 + rnd(-.3, .3))], [a.s + 7.4, -5.55, a.side * 3.6], [a.s + 1.3, -.1, a.side * 3.6], [a.s + (idx - 2) * .75, -.1, a.side * 2.8]];
+    d.pi = 0; d.rs = d.path[0][0]; d.u = d.path[0][1]; d.lat = d.path[0][2]; d.wait = idx * .45; d.state = 'stairs';
+    d.plen = 0; for (let i = 1; i < d.path.length; i++) d.plen += Math.hypot(...d.path[i].map((v, j) => v - d.path[i - 1][j]));
+    // 계단이 길면 이미 중간까지 올라와 있는 채로 시작 (열차가 지나가기 전에 닿도록)
+    const avail = Math.max(0, (a.s - S.sTrain - 6) / Math.max(Math.abs(S.speed), 13) - d.wait) * 5.2;
+    d.done = 0; if (d.plen > avail) { d.done = d.plen - avail + idx * .8; advancePath(d, d.done); }
+  } else if (a.type === 'work') {                                    // 작업 발판에서 일하는 중
+    d.rs = a.s + (idx - 1) * 1.4; d.u = -.12; d.lat = a.side * rnd(5.2, 5.7); wpos(d.rs, d.u, d.lat, _p); _f.copy(FR.R).multiplyScalar(a.side); setWorldPose(d, _p, FR.U, _f); d.state = 'work'; poseStand(d, .3);
+  }
+  if (ACTIVE[a.type]) { d.eyeOn = true; d.eyeT = 0; }
+  if (d.rs !== undefined && ['run', 'trackrun', 'spider', 'stairs'].includes(d.state)) moveWorld(d, 0);
   d.fr = { T: FR.T.clone(), U: FR.U.clone(), R: FR.R.clone() };
   d.home = d.g.position.clone(); d.g.visible = true; d.mat.emissiveIntensity = 0; d.eye.material = eyeMat; d.glow.visible = false;
   d.look.set(0, 0, 1); d.lookCur.set(0, 0, 1); snapRig(d); applyRig(d);
@@ -467,11 +491,37 @@ export function spawnGroup(n = 1 + (Math.random() * 3 | 0)) {
   const list = anchorsIn(S.sTrain + 60, S.sTrain + 170).filter(a => !used.has(a.gi) && (a.type !== 'door' || doorLeaves.has(a.gi)));
   for (let i = list.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [list[i], list[j]] = [list[j], list[i]]; }
   let made = 0;
-  for (const a of list) { if (made >= n) break; const d = pool.find(x => !x.alive); if (!d) break; spawnAt(d, a); made++; }
+  let groups = 0;
+  for (const a of list) {
+    if (groups >= n) break; groups++;
+    for (let i = 0; i < (a.n || 1); i++) { const d = pool.find(x => !x.alive); if (!d) return made; spawnAt(d, a, i); made++; }
+  }
   return made;
 }
 let nextT = CFG.firstDelay;
 export function clearAndroids() { for (const d of pool) { d.alive = false; d.g.visible = false; } used.clear(); nextT = CFG.firstDelay; }
+
+/** 월드에서 움직이는 중: 선로 좌표(rs, u, lat)에 두고 진행 방향(선로 뒤쪽 = 열차 쪽)을 봄. yaw: 선로 기준 진행 각 */
+function moveWorld(d, dt, yaw) {
+  const up = d.state === 'spider' ? -1 : 1, u = d.state === 'spider' ? 7.05 : d.state === 'trackrun' ? .3 : d.u !== undefined && d.state !== 'run' ? d.u : .3;
+  wpos(d.rs, u, d.lat, _p); d.g.position.copy(_p);
+  if (yaw === undefined) _f.copy(FR.T).multiplyScalar(-1); else _f.copy(FR.T).multiplyScalar(Math.cos(yaw)).addScaledVector(FR.R, Math.sin(yaw)).multiplyScalar(yaw === undefined ? -1 : 1);
+  if (up < 0) setWorldPose(d, _p, _r.copy(FR.U).multiplyScalar(-1), _f); else setWorldPose(d, _p, FR.U, _f);
+}
+function advancePath(d, dist) {
+  while (dist > 0 && d.pi < d.path.length - 1) {
+    const tg = d.path[d.pi + 1], L = Math.hypot(tg[0] - d.rs, tg[1] - d.u, tg[2] - d.lat);
+    if (L <= dist) { d.rs = tg[0]; d.u = tg[1]; d.lat = tg[2]; d.pi++; dist -= L; }
+    else { const k = dist / L; d.rs += (tg[0] - d.rs) * k; d.u += (tg[1] - d.u) * k; d.lat += (tg[2] - d.lat) * k; dist = 0; }
+  }
+  if (d.pi >= d.path.length - 1) d.pi = d.path.length - 2;
+}
+/** 달리기 (월드, 발 디딤 없이): 상체는 질주 자세, 다리는 크게 */
+function poseRun(d) {
+  poseLurch(d, -1, true); const s = Math.sin(d.gait), c = Math.cos(d.gait);
+  v3(d.P.foot[0], .15, .3 * Math.max(0, c), .5 * s); v3(d.P.foot[1], -.15, .3 * Math.max(0, -c), -.5 * s);
+  d.P.H.y = .88 + .06 * Math.abs(s);
+}
 
 /* ================= 잡을 부품 고르기 ================= */
 const _gl = new THREE.Vector3();
@@ -509,7 +559,7 @@ export function updateAndroids(dt, authority, targets) {
   if (authority && S.dir > 0 && Math.abs(S.speed) > 1) { nextT -= dt; if (nextT <= 0) nextT = spawnGroup() ? CFG.gapMin + Math.random() * (CFG.gapMax - CFG.gapMin) : 4; }
   for (const d of pool) if (d.alive) step(d, dt, targets);
 }
-const HIDDEN = ['inside', 'knock', 'burst', 'lurk', 'ceil', 'under', 'prep', 'unhook'];
+const HIDDEN = ['inside', 'knock', 'burst', 'lurk', 'ceil', 'under', 'prep', 'unhook', 'run', 'trackrun', 'spider', 'creep', 'perch', 'stairs', 'work', 'notice', 'dash'];
 const ON_GRIP = ['hang', 'climb', 'reach', 'jump', 'lower'];
 const _w2 = new THREE.Vector3(), _hd = new THREE.Vector3(0, 1.65, .1), _imp = new THREE.Vector3(), _g = new THREE.Vector3();
 function step(d, dt, targets) {
@@ -521,12 +571,13 @@ function step(d, dt, targets) {
   if (HIDDEN.includes(d.state) && (X < -TRAIN_BACK - 45 || X > 260)) { d.alive = false; d.g.visible = false; return; }
   // 경련: 예고 없이 잠깐 굳으며 한쪽 팔이 튐
   d.freeze -= dt;
-  if (d.freeze <= 0 && Math.random() < dt * .18 && ['walk', 'lurk', 'ceil', 'under', 'rise'].includes(d.state)) {
+  if (d.freeze <= 0 && Math.random() < dt * .18 && ['walk', 'lurk', 'ceil', 'under', 'rise', 'perch', 'work'].includes(d.state)) {
     d.freeze = .15 + Math.random() * .35; const i = Math.random() < .5 ? 0 : 1; if (!d.lock[i]) d.QV.hand[i].add(_imp.set(rnd(-2, 2), rnd(0, 3), rnd(-1, 2)));
     d.rollTo = rnd(-1, 1) * .9; snd(d, 'tick', 1.2);
   }
   const frozen = d.freeze > 0;
   d.plant = false; d.trem = .004 + (d.hp <= 1 ? .012 : 0);
+  d.slipT = Math.max(0, (d.slipT || 0) - dt); d.kneel = Math.max(0, (d.kneel || 0) - dt);
 
   if (!frozen) switch (d.state) {
     case 'inside': { if (X < d.wake) setState(d, 'knock'); poseStand(d, .05); break; }
@@ -572,6 +623,61 @@ function step(d, dt, targets) {
       if (d.st > .36) startDrop(d);
       break;
     }
+    case 'run': case 'trackrun': {                             // 보행로·선로 위를 이미 달려오는 중
+      const track = d.state === 'trackrun', v = track ? 5.2 : 4.6; d.rs -= v * dt; d.a.s = d.rs;
+      d.gait += v * dt / .9 * Math.PI; moveWorld(d, dt); poseRun(d); d.trem = .02;
+      if (Math.random() < dt * 2.5) snd(d, 'step', .8);
+      const Xn = d.rs - S.sTrain;
+      if (!track) { if (Xn <= d.targetX + 3 && Xn > -TRAIN_BACK && speed <= CFG.latchMaxSpeed) { d.home = d.g.position.clone(); d.side = d.a.side; startLeap(d, .5, 1.0); } }
+      else if (!d.decided && Xn < 8) {                                   // 정면: 느리면 앞코로 뛰어 붙고, 빠르면 그대로 치임
+        d.decided = true; if (speed <= CFG.latchMaxSpeed + 2) { d.side = Math.random() < .5 ? -1 : 1; startLeap(d, .42, 1.3); snd(d, 'shriek', 1.3); } }
+      else if (d.decided && Xn < 4.3) {
+        frameAt(S.sTrain, FR); _imp.copy(FR.T).multiplyScalar(S.speed * 1.2 + 2).addScaledVector(FR.U, 3 + speed * .2).addScaledVector(FR.R, (Math.random() - .5) * 6);
+        snd(d, 'land', 1.8); S.shake = Math.max(S.shake, .22); startRag(d, _imp, 4); H.reward?.(d.hitT.clone());
+      }
+      break;
+    }
+    case 'spider': {                                         // 천장을 거미처럼 기어 열차 쪽으로
+      d.rs -= 3.4 * dt; d.a.s = d.rs; d.gait += 3.4 * dt / .5 * Math.PI; moveWorld(d, dt); poseCrawl(d, true); d.trem = .015;
+      if (Math.random() < dt * 4) snd(d, 'tick', .6);
+      const Xn = d.rs - S.sTrain; if (Xn <= d.targetX + 3 && Xn > -TRAIN_BACK) { d.fr = { T: FR.T.clone(), U: FR.U.clone(), R: FR.R.clone() }; setState(d, 'unhook'); }
+      break;
+    }
+    case 'creep': {                                          // 상판 가장자리 아래를 손을 번갈아 옮기며 다가옴
+      d.rs -= 1.7 * dt; d.a.s = d.rs; d.gait += 1.7 * dt / .45 * Math.PI;
+      wpos(d.rs, -3.3, d.side * 2.25, _p); _f.copy(FR.R).multiplyScalar(-d.side); setWorldPose(d, _p, FR.U, _f); d.fr = { T: FR.T, U: FR.U, R: FR.R };
+      poseDangle(d); const s1 = Math.sin(d.gait); d.P.hand[0].x = .26 + .25 * s1; d.P.hand[1].x = -.26 + .25 * s1; d.P.hand[s1 > 0 ? 0 : 1].y -= .25 * Math.abs(s1); d.P.H.x = .15 * s1;
+      if (X <= d.targetX + 2.5 && X > -TRAIN_BACK && speed <= CFG.latchMaxSpeed) setState(d, 'prep');
+      break;
+    }
+    case 'perch': {                                          // 문형 크레인 위: 웅크려 떨며 내려다보다 뛰어내림
+      poseStand(d, .85); d.P.hand[0].set(.35, .35, .35); d.P.hand[1].set(-.35, .3, .4); d.trem = .02; d.P.sd.z = 1.1;
+      if (X <= d.targetX + 4.5 && X > -TRAIN_BACK) { if (!d.prepT) { d.prepT = .35; snd(d, 'servo', 1.2); } d.prepT -= dt; d.P.H.y -= .2; if (d.prepT <= 0) { d.prepT = 0; startDrop(d); if (d.state === 'drop') d.dur = .95; } }
+      break;
+    }
+    case 'stairs': {                                         // 계단을 우르르 뛰어 올라와 층계참 끝에서 웅크림
+      if (!d.go && X - 8 > ((d.plen - d.done) / 5.2 + d.wait + .5) * Math.max(Math.abs(S.speed), 13)) { poseStand(d, .35); const hm = Math.max(0, Math.sin(d.t * 4.3 + d.phase)); d.P.hand[1].set(-.25, .8 + hm * .45, .45); d.P.sd.z = .9; moveWorld(d, 0, d.side * Math.PI / 2); break; }   // 아래 작업장에서 일하는 중
+      d.go = true; d.wait -= dt; if (d.wait > 0) { poseStand(d, .3); moveWorld(d, 0); break; }
+      const tgt = d.path[Math.min(d.pi + 1, d.path.length - 1)], ds = tgt[0] - d.rs, du = tgt[1] - d.u, dl = tgt[2] - d.lat, L = Math.hypot(ds, du, dl), v = 5.2 * dt;
+      if (L <= v) { d.rs = tgt[0]; d.u = tgt[1]; d.lat = tgt[2]; d.pi++; } else { d.rs += ds / L * v; d.u += du / L * v; d.lat += dl / L * v; }
+      d.gait += v / .9 * Math.PI; moveWorld(d, dt, Math.atan2(dl, ds)); poseRun(d);
+      if (Math.random() < dt * 3) snd(d, 'step', .8);
+      if (d.pi >= d.path.length - 1) { d.a.s = d.rs; d.home = d.g.position.clone(); d.fr = { T: FR.T.clone(), U: FR.U.clone(), R: FR.R.clone() }; _f.copy(FR.R).multiplyScalar(-d.side); setWorldPose(d, d.g.position, FR.U, _f); setState(d, 'lurk'); }
+      break;
+    }
+    case 'work': {                                           // 콘솔 앞에서 뭔가를 두드림 → 열차를 알아챔
+      poseStand(d, .35); const hm = Math.max(0, Math.sin(d.t * 5 + d.phase)); d.P.hand[1].set(-.25, .9 + hm * .4, .45); d.P.hand[0].set(.3, .7, .4); d.P.sd.z = .9;
+      if (hm > .98 && Math.random() < .3) snd(d, 'knock', .35);
+      if (X < 46) { setState(d, 'notice'); d.eyeOn = true; d.eyeT = .5; snd(d, 'wake', 1); d.rollTo = rnd(-1, 1); }
+      break;
+    }
+    case 'notice': { poseStand(d, .2); d.trem = .05; if (d.st > rnd(.3, .8)) { setState(d, 'dash'); snd(d, 'shriek', 1.2); } break; }
+    case 'dash': {                                           // 발판 끝으로 달려옴
+      const v = 4 * dt, edge = d.side * 3.1; d.lat += Math.sign(edge - d.lat) * Math.min(v, Math.abs(edge - d.lat)); d.u = -.1;
+      d.gait += v / .9 * Math.PI; moveWorld(d, dt, -d.side * Math.PI / 2); poseRun(d);
+      if (Math.abs(d.lat - edge) < .05) { d.a.s = d.rs; d.home = d.g.position.clone(); d.fr = { T: FR.T.clone(), U: FR.U.clone(), R: FR.R.clone() }; setState(d, 'lurk'); }
+      break;
+    }
     case 'under': {
       poseDangle(d);
       if (X <= d.targetX + 2.5 && X > -TRAIN_BACK && speed <= CFG.latchMaxSpeed) setState(d, 'prep');
@@ -611,6 +717,8 @@ function step(d, dt, targets) {
   }
   else place(d);
   if (d.state !== 'leap' && !HIDDEN.includes(d.state) && d.state !== 'drop') place(d);
+  if (d.slipT > 0) { d.lock[d.slipI] = false; v3(d.P.hand[d.slipI], (d.slipI ? -1 : 1) * .55, d.P.H.y + .3, -.5); }        // 맞은 팔: 잠깐 놓쳤다 다시 잡음
+  if (d.kneel > 0 && (d.state === 'walk' || d.state === 'windup')) d.P.H.y -= .35 * Math.min(1, d.kneel * 2);               // 다리 맞음: 주저앉았다 일어남
   stepHead(d, dt, frozen);
   smoothRig(d, dt); applyRig(d);
   if (d.glow.visible) { const dist = d.hitH.distanceTo(camera.position), k = Math.min(1, Math.max(0, (dist - 1.5) / 7)); d.glow.material.opacity = .25 + .75 * k; d.glow.scale.setScalar(.18 + .42 * k); }
@@ -748,6 +856,8 @@ function stepHop(d, dt) {
 }
 
 /* ---------- 열차 위에서 ---------- */
+/* 칸 사이 문(통로) 구간 [앞쪽 차량 뒤 끝 - 뒤 차량 앞 끝] (통합 x) */
+const DOORS = () => [[-powerCar.off + powerCar.x1, driveCar.x0], [-cabinCar.off + cabinCar.x1, -powerCar.off + powerCar.x0]].map(([a, b]) => [Math.min(a, b), Math.max(a, b)]);
 const DRIVE_LEDGE = () => GRIPS.find(g => g.kind === 'ledge' && g.car === driveCar), CABIN_LEDGE = () => GRIPS.find(g => g.kind === 'ledge' && g.car === cabinCar);
 function stepWalk(d, dt, targets) {
   const roof = d.level === 'roof', car = carForTrainX(d.tp.x), lx = d.tp.x + car.off;
@@ -758,7 +868,10 @@ function stepWalk(d, dt, targets) {
     const dd = Math.abs(T.x - d.tp.x) + Math.abs(T.z - d.tp.z) * .5; if (dd < bd) { bd = dd; tg = T; }
   }
   let gx, gz, goal = null;
-  if (tg) { gx = tg.x; gz = tg.z; }
+  if (tg) { gx = tg.x; gz = tg.z;
+    // 다른 칸에 있는 사람에게: 사이의 문(통로) 가까이에선 가운데로 붙어서 지나감
+    if (!roof) for (const [a, b] of DOORS()) { const c = (a + b) / 2; if ((d.tp.x - c) * (gx - c) < 0 && Math.abs(d.tp.x - c) < 2.4) { gz = 0; break; } }
+  }
   else if (roof) {                                          // 지붕에 상대가 없으면 배터리 칸 쪽 끝으로 가서 내려감
     const toBack = car === driveCar; gx = toBack ? -3.25 : -cabinCar.off + 3.25; gz = d.tp.z; goal = 'down';
   } else {
@@ -792,6 +905,7 @@ function stepWalk(d, dt, targets) {
   if (sprint && (!tg || dist < 1.4 || d.st > 2.4)) { setState(d, 'walk'); if (tg && dist < 1.9) { setState(d, 'windup'); d.fast = true; d.swung = false; d.blendT = .05; } }
   const run = d.state === 'sprint';
   let spd = roof ? CFG.crawl * (run ? 3.6 : 1) : run ? CFG.sprint : CFG.walk;
+  if ((d.legHit || 0) >= 2) spd = CFG.crawl * (run ? 2.2 : .8);
   const stopAt = tg ? 1.15 : .1;
   if (!blocked && Math.hypot(dx, dz) > stopAt) {
     // 몸을 먼저 돌리고(둔하게), 바라보는 쪽으로만 나아감
@@ -807,23 +921,56 @@ function stepWalk(d, dt, targets) {
   // 걸을 수 있는 곳에서 벗어나지 않게 (배터리 칸 양 끝 통로는 가운데만)
   if (roof) { const x1 = car === driveCar ? 1.9 : car.x1 - .2, l = d.tp.x + car.off; d.tp.x = Math.max(car.x0 + .15, Math.min(x1, l)) - car.off; d.tp.z = Math.max(-1.45, Math.min(1.45, d.tp.z)); }
   else {
-    const pc = powerCar, l = Math.max(pc.x0 - .1, Math.min(pc.x1 + .1, d.tp.x + pc.off)); d.tp.x = l - pc.off;
-    const zl = Math.abs(l) > 3.0 ? .55 : 1.05; d.tp.z = Math.max(-zl, Math.min(zl, d.tp.z));
+    // 바닥은 세 칸 모두 걸어 다님 (운전실·객실 문으로 드나듦). 문 근처·통로에선 가운데로만
+    d.tp.x = Math.max(-cabinCar.off + cabinCar.x0 + .4, Math.min(driveCar.x0 + 4.7, d.tp.x));
+    const here = carForTrainX(d.tp.x), inDoor = DOORS().some(([a, b]) => d.tp.x > a - .45 && d.tp.x < b + .45);
+    const zl = inDoor ? .42 : here === powerCar ? 1.05 : 1.4; d.tp.z = Math.max(-zl, Math.min(zl, d.tp.z));
   }
   d.tp.y = roof ? ROOF_Y : F;
   // 자세
   if (roof) { d.gait += Math.hypot(vx, vz) * dt / .5 * Math.PI; poseCrawl(d, Math.hypot(vx, vz) > .05); if (run) { d.P.H.y -= .1; d.P.sd.z += .2; } }
+  else if ((d.legHit || 0) >= 2) { d.gait += Math.hypot(vx, vz) * dt / .45 * Math.PI; poseCrawl(d, Math.hypot(vx, vz) > .05); d.P.foot[d.limp].y += .25; d.P.foot[d.limp].z -= .3; }   // 다리가 망가져 끌며 기어 옴
   else { const sw = stepFeet(d, dt, vx, vz, run); poseLurch(d, sw, run); }
+  separate(d, roof);
   if (run) d.trem = .02;
   if (blocked) return;
-  // 공격 · 돌발 질주
+  // 공격 · 돌발 질주 (열차 위에선 드물게)
   if (tg && dist < (roof ? 1.5 : 1.4) && d.cool <= 0 && !run) { setState(d, 'windup'); d.blendT = .1; d.swung = false; snd(d, 'servo', 1.2); return; }
-  if (tg && dist > 2.2 && d.sprintCD <= 0 && Math.random() < dt * .45) { d.sprintCD = rnd(5, 11); setState(d, 'twitch'); snd(d, 'tick', 1.5); d.rollTo = rnd(-1, 1); return; }
+  if (tg && dist > 2.6 && d.sprintCD <= 0 && Math.random() < dt * .1) { d.sprintCD = rnd(14, 26); setState(d, 'twitch'); snd(d, 'tick', 1.5); d.rollTo = rnd(-1, 1); return; }
   // 목적지에 닿았을 때
   if (goal === 'down' && Math.hypot(dx, dz) < .35) startDescend(d, car);
   else if (goal && goal !== 'down' && Math.hypot(dx, dz) < .3) {          // 모서리 밑: 몸을 돌려 뛰어 잡음
     setGrip(d, goal, gripPoint(goal, _gl.set(0, 0, d.tp.z), _gl).x); d.gp.z = Math.max(-1.2, Math.min(1.2, d.tp.z));
     gripTrain(d, _g); reroot(d, _g, d.gh); d.K = makeJump(F - d.gp.y); setState(d, 'jump'); d.blendT = .15; snd(d, 'servo', 1.2);
+  }
+}
+/* 객차·다른 안드로이드와 겹치지 않게: 골반·가슴·머리를 구로 보고 충돌 상자에서 밀어냄(수평만) */
+const _cl = new THREE.Vector3(), _push = new THREE.Vector3();
+function separate(d, roof) {
+  d.g.updateMatrixWorld(); _push.set(0, 0, 0);
+  const car = carForTrainX(d.tp.x);
+  for (const c of [car, ...JOINTS]) {
+    for (const ji of [0, 1, 2]) {
+      _cl.copy(d.J[ji]).applyMatrix4(d.g.matrixWorld).applyMatrix4(c.inv); const r = ji === 2 ? .16 : .22;
+      for (const b of c.boxes) {
+        if (_cl.y < b.min[1] - r || _cl.y > b.max[1] + r) continue;
+        if (b.max[1] <= F + .02 && _cl.y > b.max[1]) continue;                     // 바닥판은 무시
+        const cx = Math.max(b.min[0], Math.min(b.max[0], _cl.x)), cz = Math.max(b.min[2], Math.min(b.max[2], _cl.z)), cy = Math.max(b.min[1], Math.min(b.max[1], _cl.y));
+        let dx = _cl.x - cx, dz = _cl.z - cz; const dy = _cl.y - cy, dist = Math.hypot(dx, dy, dz);
+        if (dist >= r) continue;
+        if (Math.hypot(dx, dz) < 1e-4) {                                         // 상자 안: 가장 얕은 쪽으로
+          const ox0 = _cl.x - b.min[0], ox1 = b.max[0] - _cl.x, oz0 = _cl.z - b.min[2], oz1 = b.max[2] - _cl.z, m = Math.min(ox0, ox1, oz0, oz1);
+          if (m === ox0) dx = -(ox0 + r); else if (m === ox1) dx = ox1 + r; else if (m === oz0) dz = -(oz0 + r); else dz = oz1 + r;
+          _push.x += dx; _push.z += dz;
+        } else { const k = (r - dist) / Math.hypot(dx, dz); _push.x += dx * k; _push.z += dz * k; }
+      }
+    }
+  }
+  d.tp.x += Math.max(-.08, Math.min(.08, _push.x)); d.tp.z += Math.max(-.08, Math.min(.08, _push.z));
+  for (const o of pool) {
+    if (o === d || !o.alive || o.level !== d.level || !['walk', 'windup', 'sprint', 'twitch', 'rise'].includes(o.state)) continue;
+    const dx = d.tp.x - o.tp.x, dz = d.tp.z - o.tp.z, dd = Math.hypot(dx, dz);
+    if (dd < .62 && dd > 1e-4) { const k = (.62 - dd) * .5 / dd; d.tp.x += dx * k; d.tp.z += dz * k; }
   }
 }
 /** 지붕 끝에서 내려가는 방법을 그때그때: 뛰어내리기(착지 지점 제각각) / 모서리에 매달려 내려오기 */
@@ -847,40 +994,83 @@ function toFall(d, life) {
 
 /* ================= 공격받기 ================= */
 const _o = new THREE.Vector3();
+/* 부위: 머리(구) · 몸통 · 팔 2마디 · 다리 2마디(캡슐). 쓰러진 몸(랙돌)도 맞으면 그 관절이 튕긴다 */
+const PARTS = [['torso', 0, 1, .24, -1], ['arm', 3, 4, .11, 0], ['arm', 4, 5, .1, 0], ['arm', 6, 7, .11, 1], ['arm', 7, 8, .1, 1],
+  ['leg', 9, 10, .13, 0], ['leg', 10, 11, .12, 0], ['leg', 12, 13, .13, 1], ['leg', 13, 14, .12, 1]];
+const JW = Array.from({ length: 15 }, () => new THREE.Vector3()), _sa = new THREE.Vector3(), _sb = new THREE.Vector3(), _w0 = new THREE.Vector3();
+/** 광선(o + t·u, t≥0)과 선분 a-b 의 가장 가까운 거리. [t, 거리, 선분 위 비율] */
+function raySeg(o, u, a, b) {
+  const ab = _sb.subVectors(b, a), ao = _sa.subVectors(o, a), L2 = ab.lengthSq() || 1e-6;
+  const ud = u.dot(ab), uo = u.dot(ao), abo = ab.dot(ao), den = L2 - ud * ud;
+  let s = den > 1e-8 ? (abo - ud * uo) / den : 0; s = Math.max(0, Math.min(1, s));
+  let t = ud * s - uo; if (t < 0) { t = 0; s = Math.max(0, Math.min(1, abo / L2)); }
+  _w0.copy(a).addScaledVector(ab, s).sub(o).addScaledVector(u, -t);
+  return [t, _w0.length(), s];
+}
 export function rayAndroid(origin, dir, maxDist) {
-  let best = null, bt = maxDist, head = false;
+  let best = null, bt = maxDist;
   for (const d of pool) {
-    if (!d.alive || d.state === 'rag' || d.state === 'inside' || d.state === 'knock') continue;
-    for (const [p, r, isHead] of [[d.hitH, .2, true], [d.hitT, .32, false], [d.hitP, .24, false]]) {
-      _o.copy(p).sub(origin); const t = _o.dot(dir);
-      if (t < 0 || t > bt || _o.lengthSq() - t * t > r * r) continue;
-      bt = t; best = d; head = isHead;
+    if (!d.alive || d.state === 'inside' || d.state === 'knock') continue;
+    const rag = d.state === 'rag';
+    for (let i = 0; i < 15; i++) rag ? JW[i].copy(d.rp[i]) : JW[i].copy(d.J[i]).applyMatrix4(d.g.matrixWorld);
+    // 머리
+    const hp = rag ? JW[2] : d.hitH; _o.copy(hp).sub(origin); const th = _o.dot(dir);
+    if (th > 0 && th < bt && _o.lengthSq() - th * th < .19 * .19) { bt = th; best = { droid: d, part: 'head', side: -1, joint: 2 }; }
+    for (const [part, ia, ib, r, side] of PARTS) {
+      const [tt, dist, s] = raySeg(origin, dir, JW[ia], JW[ib]);
+      if (dist < r && tt < bt && tt > 0) { bt = tt; best = { droid: d, part, side, joint: s < .5 ? ia : ib }; }
     }
   }
-  return best ? { droid: best, dist: bt, head, point: origin.clone().addScaledVector(dir, bt) } : null;
+  if (!best) return null;
+  return Object.assign(best, { dist: bt, head: best.part === 'head', point: origin.clone().addScaledVector(dir, bt) });
 }
-function hitReact(d, dirWorld, power) {
-  if (!dirWorld) return; _o.copy(dirWorld).applyQuaternion(_q.copy(d.g.quaternion).invert());
-  impulse(d, _imp.copy(_o).multiplyScalar(power).setY(_o.y * power + .4), .9);
-  d.QV.look.addScaledVector(_o, 4); d.rollTo = rnd(-1, 1);
-  if (d.state === 'hang') d.swv += (Math.random() < .5 ? -1 : 1) * power * .6;
+const _ld = new THREE.Vector3();
+/** 맞은 부위에 따라 다르게 반응 (방향은 루트 로컬로 바꿔서) */
+function hitReact(d, dirWorld, power, part = 'torso', side = -1) {
+  if (!dirWorld) return;
+  _ld.copy(dirWorld).applyQuaternion(_q.copy(d.g.quaternion).invert());
+  const V = d.QV;
+  if (part === 'head') {                                     // 고개가 홱 꺾여 젖혀지고 몸은 반 박자 늦게 휘청
+    V.look.addScaledVector(_ld, power * 3.2); V.look.y += power * .8; d.rollTo = (Math.random() < .5 ? -1 : 1) * rnd(.7, 1.3); d.roll += d.rollTo * .6;
+    V.sd.addScaledVector(_ld, power * 1.4); V.H.addScaledVector(_ld, power * .3); d.stagger = Math.max(d.stagger, .6); d.freeze = 0;
+  } else if (part === 'arm') {                               // 그 팔이 뒤로 튕겨 나가고 상체가 비틀림. 붙잡고 있던 손이면 놓침
+    const i = side < 0 ? 1 : side; d.lock[i] = false; d.slipT = .6; d.slipI = i;
+    V.hand[i].addScaledVector(_ld, power * 3.5).y += power * .8; V.sd.addScaledVector(_ld, power * .9);
+    if (d.state === 'hang') d.grip -= .3;
+    d.stagger = Math.max(d.stagger, .3);
+  } else if (part === 'leg') {                               // 다리가 꺾여 주저앉음. 맞은 쪽을 절게 되고, 두 번 맞으면 기어서 다가옴
+    const i = side < 0 ? 0 : side; d.limp = i; d.legHit = (d.legHit || 0) + 1;
+    V.H.y -= power * .9; V.H.addScaledVector(_ld, power * .4); V.sd.addScaledVector(_ld, -power * .6);
+    if (d.plant && d.fp) { _o.copy(dirWorld).applyQuaternion(_q.copy(carForTrainX(d.tp.x).g.quaternion).invert()); d.fp[i].x += _o.x * .3; d.fp[i].z += _o.z * .3; }
+    else V.foot[i].addScaledVector(_ld, power * 2);
+    d.stagger = Math.max(d.stagger, .9); d.kneel = .9;
+    if (d.state === 'hang') d.swv += (Math.random() < .5 ? -1 : 1) * power;
+  } else {                                                   // 몸통: 통째로 밀리며 허리가 꺾임
+    impulse(d, _imp.copy(_ld).multiplyScalar(power).setY(_ld.y * power + .3), .9);
+    V.sd.addScaledVector(_ld, power * 1.6); d.stagger = Math.max(d.stagger, .45);
+    if (d.state === 'hang') d.swv += (Math.random() < .5 ? -1 : 1) * power * .6;
+  }
 }
-export function damageAndroid(d, dmg, dirWorld, point) {
-  if (!d.alive || d.state === 'rag') return false;
-  d.hp -= dmg; d.flash = 1; d.stagger = Math.max(d.stagger, .45); d.freeze = 0;
-  if (d.hp > 0) { A.hitSnd(false); hitReact(d, dirWorld, 2.6); if (d.state === 'hang') d.grip -= .25; if (d.state === 'hang' && d.grip <= 0) toFall(d, 2.5); return false; }
+/** 쓰러진 몸의 한 관절을 튕김 */
+function ragKick(d, j, dirWorld, k) { if (j >= 0 && dirWorld) { d.rq[j].addScaledVector(dirWorld, -k); d.life = Math.max(d.life, d.st + 1.5); } }
+export function damageAndroid(d, dmg, dirWorld, point, part = 'torso', side = -1, joint = 1) {
+  if (!d.alive) return false;
+  if (d.state === 'rag') { ragKick(d, joint, dirWorld, .14); return false; }
+  d.hp -= dmg; d.flash = 1; d.freeze = 0;
+  if (d.hp > 0) { A.hitSnd(false); hitReact(d, dirWorld, 2.6, part, side); if (d.state === 'hang' && d.grip <= 0) toFall(d, 2.5); return false; }
   A.hitSnd(true); H.reward?.(d.hitT.clone());
   d.eye.material = eyeMat; d.glow.visible = false; d.eyeOn = true; d.eyeT = 99;
   frameAt(S.sTrain, FR);
-  _f.copy(dirWorld || FR.R).multiplyScalar(3.5).addScaledVector(FR.U, 1.2);
+  _f.copy(dirWorld || FR.R).multiplyScalar(2.5).addScaledVector(FR.U, .8);
   if (!HIDDEN.includes(d.state)) _f.addScaledVector(FR.T, S.speed * .85);
   d.gr = null; startRag(d, _f, 4);
+  ragKick(d, joint, dirWorld, part === 'head' ? .2 : .13);                // 맞은 곳이 먼저 꺾여 나감
   return true;
 }
 export function kickAndroid(origin, dir, range) {
   let hit = null, bd = range;
   for (const d of pool) {
-    if (!d.alive || ['rag', 'inside', 'knock', 'burst', 'lurk', 'ceil', 'unhook', 'under', 'prep', 'drop'].includes(d.state)) continue;
+    if (!d.alive || d.state === 'rag' || d.state === 'drop' || HIDDEN.includes(d.state)) continue;
     _o.copy(d.hitT).sub(origin);
     const dist = _o.length(); if (dist > bd + (ON_GRIP.includes(d.state) ? 1.1 : 0) || _o.dot(dir) / Math.max(dist, .01) < .3) continue;
     bd = dist; hit = d;
@@ -891,7 +1081,7 @@ export function kickAndroid(origin, dir, range) {
   else {
     _o.copy(dir).applyQuaternion(_q.copy(carForTrainX(hit.tp.x).g.quaternion).invert());
     hit.tp.x += _o.x * 1.3; hit.tp.z += _o.z * 1.3; hit.stagger = 1.1; if (hit.state !== 'walk') setState(hit, 'walk'); hit.swung = false; resetFeet(hit);
-    hitReact(hit, dir, 4.5);
+    hitReact(hit, dir, 4.5, 'torso');
     const edge = hit.level === 'roof' ? 1.75 : 1.5;
     if (Math.abs(hit.tp.z) > edge && (hit.level === 'roof' || carForTrainX(hit.tp.x) === powerCar)) { hit.side = Math.sign(hit.tp.z); place(hit); frameAt(S.sTrain, FR); startRag(hit, _imp.copy(dir).multiplyScalar(4).addScaledVector(FR.T, S.speed * .8), 2.5); }
     else damageAndroid(hit, 1, dir);

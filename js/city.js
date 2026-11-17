@@ -9,10 +9,10 @@
 // 모든 정적 구조물은 Mesher 로 재질별 메시 몇 개에 합친다(그리기 호출 최소화). 그림자·충돌 없음.
 import * as THREE from 'three';
 import { buildHarbor, animateHarbor } from './harbor.js';
-import {ordinaryHarborJobs,animateOrdinaryHarbor} from './ordinary-harbor.js';
+import {ordinaryHarborJobs,animateOrdinaryHarbor,ordinaryPlan} from './ordinary-harbor.js';
 import {getRun} from './run-state.js';
 import { C, Mesher, landMat, glowMat, woodMat, steelMat, prep, M as MX, merged } from './geo.js';
-import { trackPos, frameAt, makeFrame, sector, localZ, SECTOR, U } from './track.js';
+import { trackPos, frameAt, makeFrame, sector, localZ, SECTOR, U, routeZ } from './track.js';
 import { scene, camera, renderer } from './scene.js';
 import { CH, SEG, STEP, QUALITY } from './config.js';
 import { hash, mulberry, getSeed } from './noise.js';
@@ -85,6 +85,40 @@ function lightCone(h, r, col, k) {
   return new THREE.Mesh(g, coneMat);
 }
 
+/* ---------- 트인 구간 설비 (안드로이드가 나오는 곳) ---------- */
+function openFeatureMesh(f, M, G, H, P, FR, PL) {
+  const sd = f.side;
+  if (f.type === 'gantry') {                       // 선로를 가로지르는 문형 크레인: 다리는 어둠 아래로, 위 보에 안드로이드가 웅크림
+    for (const s of [-1, 1]) { M.fbox(P, FR, 0, -6, s * 3.7, .5, 31, .5, STEELD); M.fbox(P, FR, 0, 3, s * 3.7, .7, .3, .7, HAZ); }
+    M.fbox(P, FR, 0, 9.55, 0, .8, .6, 8.2, STEEL); M.fbox(P, FR, 0, 9.95, 0, .9, .2, 8.2, STEELD);
+    M.fbox(P, FR, 0, 9.0, f.r, 1.3, .5, 1.1, STEELD);                                               // 주행 대차
+    _Q.copy(P).addScaledVector(FR.U, 9).addScaledVector(FR.R, f.r + .6); _B.copy(_Q).addScaledVector(FR.U, -1.8); M.pipe(_Q.x, _Q.y, _Q.z, _B.x, _B.y, _B.z, .04, STEELD, 4, true);
+    M.fbox(P, FR, 0, 7.05, f.r + .6, .4, .35, .25, HAZ);                                             // 늘어진 갈고리
+    G.fbox(P, FR, .45, 9.2, -sd * 2.6, .2, .1, .5, WHITE); _Q.copy(P).addScaledVector(FR.U, 9.1).addScaledVector(FR.R, -sd * 2.6); H.raw(_Q, 3.4, WHITE, .7);
+    G.fbox(P, FR, 0, 10.1, sd * 3.7, .2, .2, .2, RED); _Q.copy(P).addScaledVector(FR.U, 10.1).addScaledVector(FR.R, sd * 3.7); H.raw(_Q, 2.6, RED, .7);
+  } else if (f.type === 'stairs') {                // 상판 옆 층계참 + 앞쪽 아래 어둠으로 내려가는 계단
+    M.fbox(P, FR, 0, -.22, sd * 3.6, 2.6, .2, 2.4, STEEL); M.fbox(P, FR, 0, .55, sd * 4.75, 2.6, .05, .05, STEELL); M.fbox(P, FR, 0, 1.0, sd * 4.75, 2.6, .06, .06, STEELL);
+    for (const x of [-1.25, 1.25]) M.fbox(P, FR, x, .4, sd * 4.75, .06, 1.1, .06, STEELL);
+    M.fbox(P, FR, 0, -.18, sd * 2.45, 2.6, .08, .1, HAZ);                                             // 끝선
+    for (let i = 0; i < 17; i++) M.fbox(P, FR, 1.45 + i * .34, -.3 - i * .31, sd * 3.6, .36, .07, 1.25, STEELL);
+    for (const z of [3.0, 4.2]) { _A.copy(P).addScaledVector(FR.T, 1.3).addScaledVector(FR.U, -.3).addScaledVector(FR.R, sd * z); _B.copy(P).addScaledVector(FR.T, 7.1).addScaledVector(FR.U, -5.6).addScaledVector(FR.R, sd * z);
+      M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .07, STEELD, 4, true); _A.addScaledVector(FR.U, 1); _B.addScaledVector(FR.U, 1); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .035, STEELL, 4, true); }
+    M.fbox(P, FR, 7.8, -5.75, sd * 3.6, 1.8, .2, 1.8, STEEL); M.fbox(P, FR, 7.8, -21, sd * 3.6, .35, 30, .35, STEELD);
+    G.fbox(P, FR, -1.1, 2.1, sd * 4.75, .14, .14, .14, AMBER); M.fbox(P, FR, -1.1, 1.0, sd * 4.75, .07, 2.1, .07, STEELL);
+    _Q.copy(P).addScaledVector(FR.T, -1.1).addScaledVector(FR.U, 2.1).addScaledVector(FR.R, sd * 4.75); H.raw(_Q, 3, AMBER, .8);
+    _Q.copy(P).addScaledVector(FR.U, -.1).addScaledVector(FR.R, sd * 3.6); PL.disc(_Q.x, _Q.y, _Q.z, FR.T.x, FR.T.y, FR.T.z, FR.R.x, FR.R.y, FR.R.z, 2.6, AMBER, .25);
+  } else {                                         // 작업 발판: 콘솔·화물·조명. 열차 폭 바로 바깥
+    M.fbox(P, FR, 0, -.25, sd * 5.1, 4.6, .25, 3.6, STEEL); M.fbox(P, FR, 0, -.2, sd * 3.3, 4.6, .1, .1, HAZ);
+    for (const x of [-2.2, 2.2]) M.fbox(P, FR, x, -10, sd * 5.8, .3, 19.5, .3, STEELD);
+    M.fbox(P, FR, 0, .55, sd * 6.85, 4.6, .05, .05, STEELL); M.fbox(P, FR, 0, 1.0, sd * 6.85, 4.6, .06, .06, STEELL);
+    M.fbox(P, FR, -1.1, .45, sd * 6.1, .9, 1.0, .6, STEELD); G.fbox(P, FR, -1.1, .85, sd * 5.78, .6, .3, .03, C('#3f7f8a'));       // 콘솔과 화면
+    M.fbox(P, FR, 1.3, .3, sd * 6.0, 1.1, .7, 1.0, RUST); M.fbox(P, FR, 1.5, .85, sd * 6.1, .7, .4, .7, CONC);
+    M.fbox(P, FR, -2.0, 1.35, sd * 6.7, .08, 3.3, .08, STEELL); G.fbox(P, FR, -2.0, 3.0, sd * 6.4, .3, .14, .4, WHITE);
+    _Q.copy(P).addScaledVector(FR.T, -2).addScaledVector(FR.U, 2.95).addScaledVector(FR.R, sd * 6.4); H.raw(_Q, 3.4, WHITE, .8);
+    _Q.copy(P).addScaledVector(FR.U, -.1).addScaledVector(FR.R, sd * 5.2); PL.disc(_Q.x, _Q.y, _Q.z, FR.T.x, FR.T.y, FR.T.z, FR.R.x, FR.R.y, FR.R.z, 3.2, WHITE, .2);
+  }
+}
+
 /* ---------- 공용 ---------- */
 const sleeperGeo = new THREE.BoxGeometry(.24, .12, 1.9), railGeo = new THREE.BoxGeometry(STEP + .06, .16, .14), unitBox = new THREE.BoxGeometry(1, 1, 1);
 const SHARED = new Set([sleeperGeo, railGeo, unitBox]);
@@ -111,10 +145,46 @@ export function anchorsIn(s0, s1) {
     if (sp.tunnel) {
       const w = styleOf(sp.k).walk;
       if (hash(gi, 41) < .16 && sp.open !== w) out.push({ type: 'door', gi, s: sc + 1.2, side: w });
-      else if (hash(gi, 44) < .3) out.push({ type: 'ceil', gi, s: sa, side: hash(gi, 45) < .5 ? -1 : 1, r: (hash(gi, 46) - .5) * 2.4 });
-    } else if (sp.k >= 0 && sector(sp.k).kind !== 'ordinary' && sp.u >= U.bridge0 && sp.u < U.ramp1 && hash(gi, 47) < .28) out.push({ type: 'under', gi, s: sc, side: hash(gi, 48) < .5 ? -1 : 1 });
+      else if (hash(gi, 61) < .1) out.push({ type: 'runner', gi, s: sc, side: w, n: 1 + Math.floor(hash(gi, 62) * 3) });      // 보행로를 따라 이미 달려오는 무리
+      else if (hash(gi, 44) < .3) out.push({ type: hash(gi, 60) < .55 ? 'spider' : 'ceil', gi, s: sa, side: hash(gi, 45) < .5 ? -1 : 1, r: (hash(gi, 46) - .5) * 2.4 });
+    } else {
+      const f = openFeature(gi);
+      if (f) out.push(Object.assign({ gi, s: sc }, f));
+      else if (sp.k >= 0 && sector(sp.k).kind !== 'ordinary' && sp.u >= U.bridge0 && sp.u < U.ramp1 && hash(gi, 47) < .28)
+        out.push({ type: hash(gi, 63) < .5 ? 'climber' : 'under', gi, s: sc, side: hash(gi, 48) < .5 ? -1 : 1 });
+      else if (hash(gi, 66) < .035) out.push({ type: 'track', gi, s: sc, side: hash(gi, 67) < .5 ? -1 : 1, n: 1 + Math.floor(hash(gi, 68) * 2) });   // 선로 위를 정면으로 달려옴
+    }
   }
+  stairAnchors(s0, s1, out);
   return out;
+}
+/** 트인 구간(철교·고가)의 설비: 문형 크레인(위에서 뛰어내림) · 선로로 이어진 계단(우르르 올라옴) · 작업 발판(일하다 달려옴)
+ *  지오메트리(sectorJobs)와 안드로이드 배치(anchorsIn)가 같은 결과를 쓰도록 마디 번호로만 정함 */
+const planCache = new Map();
+const planOf = k => { const key = getSeed() + ':' + k; if (!planCache.has(key)) planCache.set(key, ordinaryPlan(sector(k))); return planCache.get(key); };
+export function openFeature(gi) {
+  const sp = specAt(gi * SEG + SEG / 2);
+  if (sp.tunnel || sp.k < 0 || sp.u < U.bridge0 || sp.u >= U.ramp1 - SEG) return null;
+  const ord = sector(sp.k).kind === 'ordinary';
+  if (ord) {                                      // 일반 구역: GPT 설계의 계단·건너는 다리와 겹치지 않게
+    const pl = planOf(sp.k); if (pl.bays.some(b => Math.abs(b.x - sp.u) < 14) || pl.crossings.some(x => Math.abs(x - sp.u) < 30)) return null;
+  }
+  const h = hash(gi, 70), side = hash(gi, 71) < .5 ? -1 : 1;
+  if (gi % 11 === 3 && h < .7) return { type: 'gantry', side, r: (hash(gi, 72) - .5) * 1.6, n: 1 + (hash(gi, 73) < .45 ? 1 : 0) };
+  if (!ord && gi % 11 === 7 && h < .65) return { type: 'stairs', side, n: 3 + Math.floor(hash(gi, 74) * 3) };
+  if (gi % 11 === 9 && h < .6) return { type: 'work', side, n: 1 + Math.floor(hash(gi, 75) * 3) };
+  return null;
+}
+/** 일반 구역: 선로에서 작업장으로 내려가는 계단(GPT 설계)마다 안드로이드 무리가 아래에서 일하다 올라옴 */
+function stairAnchors(s0, s1, out) {
+  for (let k = Math.max(0, Math.floor(s0 / SECTOR)); k * SECTOR < s1; k++) {
+    const c = sector(k); if (c.kind !== 'ordinary') continue;
+    planOf(k).links.forEach((l, i) => {
+      if (l.kind !== 'stairs') return; const s = k * SECTOR + l.x; if (s < s0 || s >= s1) return;
+      const gi = 1e6 + k * 64 + i, side = Math.sign((l.za - routeZ(c, l.x)) * c.m) || 1;
+      out.push({ type: 'stairs', gi, s, side, n: 3 + Math.floor(hash(gi, 76) * 3), bot: { u: l.yb - l.ya, lat: Math.abs(l.zb - routeZ(c, l.x)), top: Math.abs(l.za - routeZ(c, l.x)) } });
+    });
+  }
 }
 
 function dispose(group) {
@@ -161,7 +231,7 @@ function buildChunk(ci) {
 
   // 터널 마디
   const M = new Mesher(), G = new Mesher(), H = new Halos(), PL = new Pools();
-  for(let j=0;j<CH/SEG;j++){frameAt(s0+j*SEG+SEG/2,FR);trackPos(s0+j*SEG+SEG/2,_P); M.fbox(_P,FR,0,-.22,0,SEG+.2,.35,3.4,CONCD);for(const sd of [-1,1])M.fbox(_P,FR,0,.1,sd*2.9,SEG+.2,.38,.5,STEELD);}
+  for(let j=0;j<CH/SEG;j++){frameAt(s0+j*SEG+SEG/2,FR);trackPos(s0+j*SEG+SEG/2,_P); M.fbox(_P,FR,0,-.22,0,SEG+.2,.35,3.4,CONCD);for(const sd of [-1,1])M.fbox(_P,FR,0,.02,sd*1.8,SEG+.2,.26,.28,STEELD);}      // 좁은 선로 (열차 폭보다 좁음)
   for (let j = 0; j < CH / SEG; j++) {
     const sa = s0 + j * SEG, sc = sa + SEG / 2, sp = specAt(sc); if (!sp.tunnel) continue;
     const gi = Math.round(sa / SEG), st = styleOf(sp.k), L = SEG + .5;
@@ -266,7 +336,15 @@ const X0 = U.shaft0, X1 = U.ramp1;
 const CRANE = { x: 560, zA: ZN + 70, zB: ZN + 230, y: 96, cargoZ: ZN + 142, lo: -82, hi: 52 };
 
 function sectorJobs(rec) {
-  if (rec.c.kind === 'ordinary') return ordinaryHarborJobs(rec.c,g=>{rec.ordinary=g;rec.group.add(g);rec.lamps.push(...g.userData.lamps);});
+  if (rec.c.kind === 'ordinary') {
+    const jobs = ordinaryHarborJobs(rec.c,g=>{rec.ordinary=g;rec.group.add(g);rec.lamps.push(...g.userData.lamps);});
+    jobs.push(() => {                              // (Claude) 문형 크레인·작업 발판 — 안드로이드가 나오는 곳
+      const M = new Mesher(), G = new Mesher(), H = new Halos(), PL = new Pools(), ox = rec.c.k * SECTOR;
+      for (let u = U.bridge0; u < U.ramp1; u += SEG) { const fe = openFeature(Math.round((ox + u) / SEG)); if (!fe) continue; const s = ox + u + SEG / 2; frameAt(s, FR); trackPos(s, _P); openFeatureMesh(fe, M, G, H, _P, FR, PL); }
+      addBuilt(rec.group, M.build(), G.build(glowMat), H.build(), PL.build());
+    });
+    return jobs;
+  }
   const c = rec.c, k = c.k, ox = k * SECTOR, ZF = ZN + c.width, R = mulberry(977 + k * 131 + (k ? getSeed() : 0));
   const mk = () => [new Mesher(ox, c.y0, c.z0, c.m), new Mesher(ox, c.y0, c.z0, c.m), new Halos(ox, c.y0, c.z0, c.m)];
   const done = (M, G, H) => addBuilt(rec.group, M.build(), G.build(glowMat), H.build());
@@ -391,30 +469,31 @@ function sectorJobs(rec) {
       const s = ox + u + SEG / 2, bridge = u >= U.bridge0 && u < U.bridge1, gi = Math.round(u / SEG);
       frameAt(s, FR); trackPos(s, _P);
       if (u >= U.bridge0) {
-        M.fbox(_P, FR, 0, -.62, 0, SEG + .4, 1, 7.6, STEEL);                                      // 상판
+        // 상판은 열차 폭보다 좁다(난간 없음): 객차 밖으로 떨어지면 아래는 허공 → 안전줄에 매달림
+        M.fbox(_P, FR, 0, -.62, 0, SEG + .4, 1, 4.0, STEEL);                                      // 상판
         for (const sd of [-1, 1]) {
-          M.fbox(_P, FR, 0, -1.95, sd * 3.3, SEG + .4, 1.7, .5, STEELD);
-          M.fbox(_P, FR, 0, .98, sd * 3.68, SEG + .4, .07, .07, STEELL); M.fbox(_P, FR, 0, .5, sd * 3.68, SEG + .4, .05, .05, STEELL);   // 난간
-          for (let q = -1; q <= 1; q++) M.fbox(_P, FR, q * 3.3, .43, sd * 3.68, .07, 1.1, .07, STEELL);
-          if (bridge) { M.fbox(_P, FR, 0, -7.2, sd * 3.3, SEG + .4, .7, .6, STEELD); M.fbox(_P, FR, -SEG / 2, -4.6, sd * 3.3, .45, 5.4, .45, STEELD); }   // 철교의 하부 트러스
+          M.fbox(_P, FR, 0, -1.95, sd * 1.75, SEG + .4, 1.7, .4, STEELD);
+          if (bridge) { M.fbox(_P, FR, 0, -7.2, sd * 1.75, SEG + .4, .7, .5, STEELD); M.fbox(_P, FR, -SEG / 2, -4.6, sd * 1.75, .4, 5.4, .4, STEELD); }   // 철교의 하부 트러스
         }
-        if (bridge) M.fbox(_P, FR, -SEG / 2, -7.2, 0, .5, .5, 6.6, STEELD);
+        if (bridge) M.fbox(_P, FR, -SEG / 2, -7.2, 0, .5, .5, 3.6, STEELD);
         for (const sd of [-1, 1]) {
-          if (bridge) { off(s - SEG / 2, -1.9, sd * 3.3, _A); off(s + SEG / 2, -7, sd * 3.3, _B); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .13, STEELD, 4, true);
-            off(s - SEG / 2, -7, sd * 3.3, _A); off(s + SEG / 2, -1.9, sd * 3.3, _B); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .13, STEELD, 4, true); }
-          M.fbox(_P, FR, 0, -1.2, sd * 3.85, SEG + .4, .4, .12, STEELL);                                    // 상판 가장자리 (매달릴 곳)
-          if (gi % 2 === 0) M.fbox(_P, FR, -SEG / 2 + .5, -1.6, sd * 3.75, .5, .8, .3, STEEL);              // 덧판
+          if (bridge) { off(s - SEG / 2, -1.9, sd * 1.75, _A); off(s + SEG / 2, -7, sd * 1.75, _B); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .12, STEELD, 4, true);
+            off(s - SEG / 2, -7, sd * 1.75, _A); off(s + SEG / 2, -1.9, sd * 1.75, _B); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .12, STEELD, 4, true); }
+          M.fbox(_P, FR, 0, -1.2, sd * 2.05, SEG + .4, .4, .12, STEELL);                                    // 상판 가장자리 (매달릴 곳)
+          if (gi % 2 === 0) M.fbox(_P, FR, -SEG / 2 + .5, -1.6, sd * 2.0, .5, .8, .3, STEEL);               // 덧판
         }
-        if (bridge && gi % 2 === 1) { M.fbox(_P, FR, 0, -3.3, -c.m * 2.2, SEG + .4, .08, 1.1, STEEL); M.fbox(_P, FR, 0, -2.6, -c.m * 1.68, SEG + .4, .05, .05, STEELL); }   // 하부 점검 통로
+        if (bridge && gi % 2 === 1) { M.fbox(_P, FR, 0, -3.3, -c.m * 1.2, SEG + .4, .08, 1.0, STEEL); M.fbox(_P, FR, 0, -2.6, -c.m * .72, SEG + .4, .05, .05, STEELL); }   // 하부 점검 통로
         // 난간등: 철교는 따뜻한 불빛이 촘촘히, 고가는 차가운 불빛이 드문드문 → 위에서 내려다볼 때 구분됨
         if (gi % (bridge ? 12 : 18) === 0) {
           const sd = -c.m, col = bridge ? WARM : WHITE;
-          M.fbox(_P, FR, 0, 1.9, sd * 3.68, .1, 2.9, .1, STEELL); G.fbox(_P, FR, 0, 3.3, sd * 3.5, .28, .18, .5, col);
-          _Q.copy(_P).addScaledVector(FR.U, 3.25).addScaledVector(FR.R, sd * 3.4); H.raw(_Q, bridge ? 4.2 : 3.4, col, .85);
+          M.fbox(_P, FR, 0, -.9, sd * 2.6, .2, .2, 1.3, STEELD); M.fbox(_P, FR, 0, 1.9, sd * 3.15, .1, 5.6, .1, STEELL); G.fbox(_P, FR, 0, 4.7, sd * 2.95, .28, .18, .5, col);   // 바깥으로 내민 까치발 위 등주
+          _Q.copy(_P).addScaledVector(FR.U, 4.65).addScaledVector(FR.R, sd * 2.9); H.raw(_Q, bridge ? 4.2 : 3.4, col, .85);
           _Q.copy(_P).addScaledVector(FR.U, -.1).addScaledVector(FR.R, sd * 1.6); PL.disc(_Q.x, _Q.y, _Q.z, FR.T.x, FR.T.y, FR.T.z, FR.R.x, FR.R.y, FR.R.z, bridge ? 5.5 : 4.5, col, .2);      // 상판에 떨어진 빛
           _Q.addScaledVector(FR.U, 2.9); rec.lamps.push({ p: _Q.clone(), c: col });
         }
       }
+      const fe = openFeature(Math.round((ox + u) / SEG));
+      if (fe) openFeatureMesh(fe, M, G, H, _P, FR, PL);
       if (gi % 6 === 2) {                                                                          // 교각: 어둠 속으로 내려감
         M.fbox(_P, ID, 0, -217, 0, 5, 430, 5, CONCD); M.fbox(_P, ID, 0, -2.6, 0, 7, 2.6, 9, CONC);
         if (u >= U.bridge0) for (const d of [60, 130]) M.fbox(_P, ID, 0, -d, 0, 6.2, 1.2, 6.2, CONC);

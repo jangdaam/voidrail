@@ -197,6 +197,7 @@ function frame() {
   updateChunks(S.sTrain); PM('plan');
   placeTrain();
   if (S.started && !S.onTurret) updatePlayer(dt);
+  if (player.scrape >= 4) { player.scrape -= 4; hurt(4); }                 // 매달린 채 선로 바닥에 끌림
   playerWorld(wp);
   updateCamera(dt, snap); snap = false;
   if (window.__camHook) window.__camHook(camera);                       // 시험용: 카메라를 열차 밖 원하는 곳에

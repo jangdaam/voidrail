@@ -1,5 +1,6 @@
 // 렌더러·카메라·안개·기본 조명
-// 성능 방침: 그림자 없음, 로그 깊이 버퍼 없음(조기 깊이 판정 유지), 픽셀 배율 상한.
+// 성능 방침: 그림자는 드론 탐조등(최대 3개, 512px)만 — 빛이 객차를 뚫고 들어가지 않게. 그림자를 드리우는 건 열차·안드로이드뿐.
+// 로그 깊이 버퍼 없음(조기 깊이 판정 유지), 픽셀 배율 상한.
 import * as THREE from 'three';
 import { QUALITY, FOG_COLOR, FOG_DENSITY } from './config.js';
 
@@ -7,6 +8,7 @@ export const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreferen
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 
 export const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(FOG_COLOR, FOG_DENSITY);

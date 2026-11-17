@@ -25,6 +25,7 @@ export function ordinaryPlan(c) {
   return {far,bays,links,route:c.route,crossings:[430,770]};
 }
 function accessStairs(M,l) {
+  if(l.from==='rail'){const sg=Math.sign(l.zb-l.za);M.box(l.x,l.ya-.15,l.za-sg*.85,3.2,.3,1.75,P.edge);}   // (Claude) 좁아진 상판 가장자리까지 잇는 층계참
   const count=Math.max(8,Math.ceil(Math.abs(l.yb-l.ya)/.3)),dz=(l.zb-l.za)/count;
   for(let i=0;i<count;i++) {
     const t=(i+.5)/count,y=l.ya+(l.yb-l.ya)*t,z=l.za+dz*(i+.5);
@@ -169,14 +170,11 @@ export function* ordinaryHarborSteps(c) {
   for(let u=110;u<1000;u+=10) {
     frameAt(c.k*SECTOR+u+5,fr);trackPos(c.k*SECTOR+u+5,p);
     if(u>=170) {
-      W.fbox(p,fr,0,-.7,0,10.4,1.2,7.6,P.steel);
-      for(const sd of [-1,1]){
-        W.fbox(p,fr,0,-2.5,sd*3.3,10.4,2.5,.6,P.dark);
-        W.fbox(p,fr,0,1.05,sd*3.65,10.4,.08,.08,P.edge);W.fbox(p,fr,0,.55,sd*3.65,10.4,.05,.05,P.edge);
-        for(const q of [-3.3,0,3.3])W.fbox(p,fr,q,.55,sd*3.65,.08,1.1,.08,P.edge);
-      }
+      // (Claude) 선로 상판을 열차 폭보다 좁게(4m) — 객차 밖으로 떨어지면 아래는 허공, 안전줄에 매달림. 난간 없음.
+      W.fbox(p,fr,0,-.7,0,10.4,1.2,4.0,P.steel);
+      for(const sd of [-1,1]) W.fbox(p,fr,0,-2.5,sd*1.75,10.4,2.5,.5,P.dark);
       // Cross ties are directly below the deck, not hung in an empty volume.
-      if(u%30===20)W.fbox(p,fr,0,-3.6,0,.7,.7,7.6,P.edge);
+      if(u%30===20)W.fbox(p,fr,0,-3.6,0,.7,.7,4.0,P.edge);
     }
     if(u%90===20){W.box(p.x,p.y-280,p.z,5,550,6,P.concrete);W.box(p.x,p.y-3.2,p.z,9,3,12,P.steel);}
   }

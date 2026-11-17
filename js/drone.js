@@ -11,7 +11,8 @@ import * as THREE from 'three';
 import { C, prep, M, merged } from './geo.js';
 import { scene, camera } from './scene.js';
 import { trackPos, frameAt, makeFrame } from './track.js';
-import { powerCar, RACK_AT } from './train.js';
+import { powerCar, RACK_AT, rayTrain } from './train.js';
+import { specAt } from './city.js';
 import { DRONE as CFG } from './config.js';
 import { S } from './state.js';
 import * as A from './audio.js';
@@ -39,7 +40,7 @@ const rotorMat = new THREE.MeshBasicMaterial({ color: 0x8a96a0, transparent: tru
 const lensOn = new THREE.MeshBasicMaterial({ color: 0xeef6ff }), lensRed = new THREE.MeshBasicMaterial({ color: 0xff5040 }), lensOff = new THREE.MeshBasicMaterial({ color: 0x1a1f22 });
 const beaconOn = new THREE.MeshBasicMaterial({ color: 0xff3020 });
 /* 빛줄기: 끝이 열린 원뿔, 꼭짓점이 밝고 멀수록 흐려짐 (가산 혼합 · 안개 적용) */
-const BEAM_L = 26, BEAM_A = .26;
+const BEAM_L = 17, BEAM_A = .17, SIZE = .6;
 const beamGeo = (() => {
   const g = new THREE.ConeGeometry(Math.tan(BEAM_A) * BEAM_L, BEAM_L, 24, 6, true); g.translate(0, -BEAM_L / 2, 0);
   const p = g.attributes.position, col = new Float32Array(p.count * 3);
@@ -50,7 +51,7 @@ const beamGeo = (() => {
 class Drone {
   constructor() {
     const g = this.g = new THREE.Group(); g.visible = false; scene.add(g);
-    this.mat = hullMat.clone(); this.body = new THREE.Group(); g.add(this.body);
+    this.mat = hullMat.clone(); this.body = new THREE.Group(); this.body.scale.setScalar(SIZE); g.add(this.body);
     this.body.add(new THREE.Mesh(hullGeo, this.mat));
     this.rotors = [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([x, z]) => { const r = new THREE.Mesh(rotorGeo, rotorMat); r.position.set(x * .75, .18, z * .56); this.body.add(r); return r; });
     this.lens = new THREE.Mesh(new THREE.CircleGeometry(.11, 12), lensOn); this.lens.rotation.y = Math.PI / 2; this.lens.position.set(.5, -.12, 0); this.body.add(this.lens);
@@ -58,7 +59,9 @@ class Drone {
     this.claws = [-1, 1].map(s => { const c = new THREE.Mesh(clawGeo, this.mat); c.position.set(.05, -.1, s * .12); c.scale.z = s; this.body.add(c); return c; });
     this.batt = new THREE.Mesh(battGeo, landLike); this.batt.position.set(0, -.62, 0); this.batt.visible = false; this.body.add(this.batt);
     // 탐조등 (광원 수가 바뀌면 셰이더를 다시 만들어 끊기므로 미리 만들어 두고 세기만 바꿈)
-    this.spot = new THREE.SpotLight(0xe6f1ff, 0, 42, BEAM_A, .45, 1.5); this.spot.castShadow = false;
+    // 그림자를 켜서 빛이 객차 지붕·벽을 뚫고 실내를 비추지 않게
+    this.spot = new THREE.SpotLight(0xe6f1ff, 0, 24, BEAM_A, .45, 1.5); this.spot.castShadow = true;
+    this.spot.shadow.mapSize.set(512, 512); this.spot.shadow.camera.near = .3; this.spot.shadow.camera.far = 24; this.spot.shadow.bias = -.002;
     this.spot.position.set(.5, -.12, 0); this.body.add(this.spot); scene.add(this.spot.target);
     this.beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: .16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     this.beam.frustumCulled = false; scene.add(this.beam); this.beam.visible = false;
@@ -82,8 +85,10 @@ const rackRel = out => out.set(RACK_AT.x, RACK_AT.y + .3, RACK_AT.z);           
 
 /* ================= 생성 ================= */
 let nextT = CFG.firstDelay;
+/** 드론은 터널에 못 들어온다: 열차 주변(앞뒤 40m)이 트인 곳일 때만 */
+export function openSky() { const s = sPower(); return !specAt(s).tunnel && !specAt(s + 40).tunnel && !specAt(s - 25).tunnel; }
 export function spawnDrone() {
-  const d = pool.find(x => !x.alive); if (!d) return null;
+  const d = pool.find(x => !x.alive); if (!d || !openSky()) return null;
   const ahead = Math.random() < .55;
   Object.assign(d, { alive: true, state: 'approach', t: 0, st: 0, hp: CFG.hp, legs: 0, maxLegs: 3 + (Math.random() * 4 | 0), side: Math.random() < .5 ? 1 : -1,
     clampT: 0, stolen: 0, lockCD: 0, flash: 0, feint: false, roll: 0, pitch: 0, yaw: ahead ? Math.PI : 0, flick: 0 });
@@ -110,7 +115,7 @@ function camWorldToRel(out) { _a.copy(camera.position).applyMatrix4(powerCar.inv
 /* ================= 매 프레임 ================= */
 const _w = new THREE.Vector3(), _dir = new THREE.Vector3(), _t = new THREE.Vector3(), _acc = new THREE.Vector3(), _pan = new THREE.Vector3(), _cr = new THREE.Vector3(), _rk = new THREE.Vector3();
 export function updateDrones(dt, authority) {
-  if (authority && S.dir > 0 && Math.abs(S.speed) > 2) { nextT -= dt; if (nextT <= 0) { nextT = rnd(CFG.gapMin, CFG.gapMax); spawnDrone(); if (Math.random() < .25) spawnDrone(); } }
+  if (authority && S.dir > 0 && Math.abs(S.speed) > 2 && openSky()) { nextT -= dt; if (nextT <= 0) { nextT = rnd(CFG.gapMin, CFG.gapMax); spawnDrone(); if (Math.random() < .25) spawnDrone(); } }
   for (const d of pool) {
     if (!d.voice) d.voice = A.droneVoice();
     if (d.alive) step(d, dt); else if (d.voice) d.voice.set(0, 0, 1);
@@ -127,7 +132,9 @@ function steer(d, target, maxSpeed, accel, dt, arrive = 3) {
 function step(d, dt) {
   d.t += dt; d.st += dt; d.lockCD -= dt; d.flash = Math.max(0, d.flash - dt * 4); d.mat.emissiveIntensity = d.flash;
   _acc.set(0, 0, 0);
-  let aimAt = null, beamK = 1, hover = .25;
+  let aimAt = null, beamK = 1, hover = .25 * SIZE;
+  // 터널 입구에 다다르면 따라 들어오지 못하고 위로 솟구쳐 물러남 (훔친 배터리는 그대로 들고 감)
+  if (d.state !== 'leave' && d.state !== 'fall' && specAt(sPower() + Math.min(d.p.x + 12, 30)).tunnel) { setS(d, 'leave'); d.wp.set(d.p.x - 30, 14, d.p.z * 1.5); }
   switch (d.state) {
     case 'approach': {                                          // 멀리서 빛부터 보이며 다가옴
       steer(d, d.wp, CFG.speed * .8, 6, dt, 6);
@@ -173,11 +180,16 @@ function step(d, dt) {
       if (d.st > 1.1) { setS(d, 'circle'); d.legs = Math.max(0, d.maxLegs - 2); pickWaypoint(d); }
       break;
     }
+    case 'leave': {
+      d.v.y += 9 * dt; d.v.x -= (S.speed * .6 + 4) * dt; d.p.addScaledVector(d.v, dt); beamK = Math.max(0, 1 - d.st);
+      if (d.st > 2.5) kill(d);
+      break;
+    }
     case 'fall': stepFall(d, dt); return;
   }
   if (!d.alive) return;
   // 터널 안을 벗어나지 않게
-  d.p.y = Math.min(d.p.y, 6.8); d.p.z = Math.max(-5, Math.min(5, d.p.z));
+  if (d.state !== 'leave') { d.p.y = Math.min(d.p.y, 6.8); d.p.z = Math.max(-5, Math.min(5, d.p.z)); }
   // 월드 배치 + 기울기: 진행 방향을 향하고, 꺾는 가속 쪽으로 몸을 기울임
   relToWorld(d.p, d.g.position);
   frameAt(sPower() + d.p.x, FR);
@@ -212,9 +224,10 @@ function step(d, dt) {
   d.flick = Math.max(0, d.flick - dt);
   const on = d.flick > 0 ? (Math.sin(d.t * 70) > -.2 ? 1 : .15) : 1;
   d.spot.position.copy(d.lens.position); d.spot.target.position.copy(d.aim); d.spot.target.updateMatrixWorld();
-  d.spot.intensity = 520 * beamK * on; d.spot.color.setHex(d.state === 'clamp' || d.state === 'dive' ? 0xff6a55 : 0xe6f1ff);
+  d.spot.intensity = 260 * beamK * on; d.spot.color.setHex(d.state === 'clamp' || d.state === 'dive' ? 0xff6a55 : 0xe6f1ff);
   d.lens.material = d.state === 'clamp' || d.state === 'dive' ? lensRed : lensOn;
   d.beam.position.copy(_w); d.beam.quaternion.setFromUnitVectors(_b.set(0, -1, 0), _dir);
+  const hit = rayTrain(_w, _dir, BEAM_L, true); d.beam.scale.setScalar(Math.max(.05, hit / BEAM_L));
   d.beam.material.opacity = .13 * beamK * on; d.beam.material.color.setHex(d.state === 'clamp' || d.state === 'dive' ? 0xff7766 : 0xffffff);
   // 소리
   d.voice?.set(pan(d), vol(d) * .55, .85 + sp * .03 + (d.state === 'dive' ? .35 : 0));
@@ -229,7 +242,7 @@ export function rayDrone(origin, dir, maxDist) {
   for (const d of pool) {
     if (!d.alive || d.state === 'fall') continue;
     d.body.getWorldPosition(_w); _a.copy(_w).sub(origin); const t = _a.dot(dir);
-    if (t < 0 || t > bt || _a.lengthSq() - t * t > .6 * .6) continue;
+    if (t < 0 || t > bt || _a.lengthSq() - t * t > .45 * .45) continue;
     bt = t; best = d;
   }
   return best ? { drone: best, dist: bt, point: origin.clone().addScaledVector(dir, bt) } : null;
