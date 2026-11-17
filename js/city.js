@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { buildHarbor, animateHarbor } from './harbor.js';
 import {ordinaryHarborJobs,animateOrdinaryHarbor} from './ordinary-harbor.js';
 import {getRun} from './run-state.js';
-import { C, Mesher, landMat, glowMat, woodMat, steelMat } from './geo.js';
+import { C, Mesher, landMat, glowMat, woodMat, steelMat, prep, M as MX, merged } from './geo.js';
 import { trackPos, frameAt, makeFrame, sector, localZ, SECTOR, U } from './track.js';
 import { scene, camera, renderer } from './scene.js';
 import { CH, SEG, STEP, QUALITY } from './config.js';
@@ -92,6 +92,31 @@ const FR = makeFrame(), FR2 = makeFrame(), _P = new THREE.Vector3(), _Q = new TH
 const ID = { T: new THREE.Vector3(1, 0, 0), U: new THREE.Vector3(0, 1, 0), R: new THREE.Vector3(0, 0, 1) };
 const off = (s, u, r, out) => { frameAt(s, FR2); return trackPos(s, out).addScaledVector(FR2.U, u).addScaledVector(FR2.R, r); };
 function addBuilt(group, ...objs) { for (const o of objs) if (o) { o.updateMatrix?.(); group.add(o); } }
+/* ---------- 열리는 정비문: 정적 메시와 따로 두어 안드로이드가 문짝을 밀고 나올 수 있게 ---------- */
+export const doorLeaves = new Map();          // 마디 번호 gi → { pivot, w }
+const leafGeo = merged([prep(new THREE.BoxGeometry(1.1, 2.1, .1), C('#303a3d'), MX(.55, 1.05, 0)), prep(new THREE.BoxGeometry(.9, .06, .11), C('#14171b'), MX(.55, 1.6, 0)),
+  prep(new THREE.BoxGeometry(.9, .06, .11), C('#14171b'), MX(.55, .5, 0)), prep(new THREE.BoxGeometry(.05, .3, .14), C('#505c5c'), MX(.95, 1.05, 0)), prep(new THREE.BoxGeometry(.3, .18, .12), C('#8d7743'), MX(.55, 1.9, 0))]);
+leafGeo.computeVertexNormals();
+SHARED.add(leafGeo);
+const lampGeo = new THREE.BoxGeometry(.5, .12, .1); SHARED.add(lampGeo);
+const DOORLAMP = new THREE.Color('#3a1410');
+/** 안드로이드가 숨어 있을 수 있는 자리 (시드로 정해짐, 모든 승객에게 같음)
+ *   door  : 터널 보행로 쪽 벽의 정비문 안
+ *   ceil  : 터널 천장 늑골에 거꾸로 매달림
+ *   under : 철교·고가 상판 가장자리 아래에 매달림 */
+export function anchorsIn(s0, s1) {
+  const out = [];
+  for (let gi = Math.ceil(s0 / SEG); gi * SEG < s1; gi++) {
+    const sa = gi * SEG, sc = sa + SEG / 2, sp = specAt(sc); if (sa < U.gate + 50) continue;
+    if (sp.tunnel) {
+      const w = styleOf(sp.k).walk;
+      if (hash(gi, 41) < .16 && sp.open !== w) out.push({ type: 'door', gi, s: sc + 1.2, side: w });
+      else if (hash(gi, 44) < .3) out.push({ type: 'ceil', gi, s: sa, side: hash(gi, 45) < .5 ? -1 : 1, r: (hash(gi, 46) - .5) * 2.4 });
+    } else if (sp.k >= 0 && sector(sp.k).kind !== 'ordinary' && sp.u >= U.bridge0 && sp.u < U.ramp1 && hash(gi, 47) < .28) out.push({ type: 'under', gi, s: sc, side: hash(gi, 48) < .5 ? -1 : 1 });
+  }
+  return out;
+}
+
 function dispose(group) {
   scene.remove(group);
   group.traverse(o => { if (o.geometry && !SHARED.has(o.geometry)) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); });
@@ -179,11 +204,32 @@ function buildChunk(ci) {
       }
     }
     // 정비문 (사람 크기)
-    if (hash(gi, 41) < .09 && sp.open !== w) {
-      M.fbox(_P, FR, 1.2, 1.3, w * 5.55, 1.5, 2.4, .16, STEELD); M.fbox(_P, FR, 1.2, 1.28, w * 5.5, 1.1, 2.1, .16, STEEL);
-      G.fbox(_P, FR, 1.2, 2.72, w * 5.5, .5, .14, .1, hash(gi, 42) < .3 ? RED : DIMWARM);
-      M.fbox(_P, FR, 1.62, 1.25, w * 5.42, .05, .3, .05, STEELL);          // 손잡이
+    if (hash(gi, 41) < .16 && sp.open !== w) {
+      // 정비문은 열차 창문 높이의 작업 발판 위에 있다 (보행로에서 사다리로 오름)
+      const DH = 1.15;
+      M.fbox(_P, FR, 1.2, 1.3 + DH, w * 5.66, 1.25, 2.5, .3, C('#07090a'));     // 문 안쪽의 어둠
+      for (const d of [-.68, .68]) M.fbox(_P, FR, 1.2 + d, 1.3 + DH, w * 5.52, .18, 2.6, .3, STEELD);   // 문틀
+      M.fbox(_P, FR, 1.2, 2.66 + DH, w * 5.52, 1.54, .18, .3, STEELD);
+      M.fbox(_P, FR, 1.2, 1.25, w * 5.0, 1.9, .12, 1.25, STEEL);                // 작업 발판
+      M.fbox(_P, FR, 1.2, 1.32, w * 4.4, 1.9, .06, .06, HAZ);                    // 발판 끝 경고색
+      for (const d of [-.8, .8]) M.fbox(_P, FR, 1.2 + d, .9, w * 5.45, .1, .7, .1, STEELD);   // 까치발
+      for (const d of [2.35, 2.75]) M.fbox(_P, FR, d, .72, w * 4.45, .05, 1.2, .05, STEELL);  // 사다리
+      for (let y = .35; y < 1.3; y += .3) M.fbox(_P, FR, 2.55, y, w * 4.45, .45, .04, .04, STEELL);
+      const pv = new THREE.Group(); off(sc + 1.2 - .55, .2 + DH, w * 5.5, pv.position); pv.quaternion.setFromRotationMatrix(FR.m);
+      const leaf = new THREE.Mesh(leafGeo, landMat); pv.add(leaf); pv.userData.leaf = leaf;
+      const lamp = new THREE.Mesh(lampGeo, new THREE.MeshBasicMaterial({ color: DOORLAMP })); lamp.position.set(.55, 2.7, -w * .1); pv.add(lamp); pv.userData.lamp = lamp;
+      group.add(pv); (rec.doors ||= []).push(gi);
+      doorLeaves.set(gi, { pivot: pv, w, open: 0 });
     }
+    // 천장: 늑골 사이로 처진 전선 묶음과 케이블 트레이, 늑골 모서리 버팀대
+    M.fbox(_P, FR, 0, 7.42, -4.1, L, .12, .9, STEELD); M.fbox(_P, FR, 0, 7.42, 4.1, L, .12, .9, STEELD);
+    for (const sd of [-1, 1]) { M.fbox(_P, FR, -SEG / 2, 6.55, sd * 4.75, .4, .4, 1.4, STEEL); }
+    if (hash(gi, 49) < .55) { const r = (hash(gi, 50) - .5) * 5; off(sa, 7.05, r, _A); off(sa + SEG, 7.05, r, _B); _Q.lerpVectors(_A, _B, .5).addScaledVector(FR.U, -.8 - hash(gi, 53) * .7);
+      M.pipe(_A.x, _A.y, _A.z, _Q.x, _Q.y, _Q.z, .07, STEELD, 4, true); M.pipe(_Q.x, _Q.y, _Q.z, _B.x, _B.y, _B.z, .07, STEELD, 4, true); }
+    if (gi % 3 === 0) M.fbox(_P, FR, -SEG / 2 + .4, 6.9, (hash(gi, 54) - .5) * 6, .5, .6, .4, CONCL);       // 늑골에 붙은 배전함
+    // 벽 아래 경고 띠, 보행로 쪽 벽의 케이블 트레이
+    M.fbox(_P, FR, 0, .35, -w * 5.58, L, .5, .06, HAZ);
+    if (sp.open !== w) { M.fbox(_P, FR, 0, 4.6, w * 5.45, L, .14, .3, STEELD); M.fbox(_P, FR, 0, 4.72, w * 5.35, L, .1, .1, C('#22282a')); }
 
     // Wall-mounted CCTV: bracket, pivot, weather hood, recessed lens and a single status light.
     if(gi % 17 === 5 && sp.open !== st.walk){
@@ -353,6 +399,13 @@ function sectorJobs(rec) {
           if (bridge) { M.fbox(_P, FR, 0, -7.2, sd * 3.3, SEG + .4, .7, .6, STEELD); M.fbox(_P, FR, -SEG / 2, -4.6, sd * 3.3, .45, 5.4, .45, STEELD); }   // 철교의 하부 트러스
         }
         if (bridge) M.fbox(_P, FR, -SEG / 2, -7.2, 0, .5, .5, 6.6, STEELD);
+        for (const sd of [-1, 1]) {
+          if (bridge) { off(s - SEG / 2, -1.9, sd * 3.3, _A); off(s + SEG / 2, -7, sd * 3.3, _B); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .13, STEELD, 4, true);
+            off(s - SEG / 2, -7, sd * 3.3, _A); off(s + SEG / 2, -1.9, sd * 3.3, _B); M.pipe(_A.x, _A.y, _A.z, _B.x, _B.y, _B.z, .13, STEELD, 4, true); }
+          M.fbox(_P, FR, 0, -1.2, sd * 3.85, SEG + .4, .4, .12, STEELL);                                    // 상판 가장자리 (매달릴 곳)
+          if (gi % 2 === 0) M.fbox(_P, FR, -SEG / 2 + .5, -1.6, sd * 3.75, .5, .8, .3, STEEL);              // 덧판
+        }
+        if (bridge && gi % 2 === 1) { M.fbox(_P, FR, 0, -3.3, -c.m * 2.2, SEG + .4, .08, 1.1, STEEL); M.fbox(_P, FR, 0, -2.6, -c.m * 1.68, SEG + .4, .05, .05, STEELL); }   // 하부 점검 통로
         // 난간등: 철교는 따뜻한 불빛이 촘촘히, 고가는 차가운 불빛이 드문드문 → 위에서 내려다볼 때 구분됨
         if (gi % (bridge ? 12 : 18) === 0) {
           const sd = -c.m, col = bridge ? WARM : WHITE;
@@ -365,6 +418,8 @@ function sectorJobs(rec) {
       if (gi % 6 === 2) {                                                                          // 교각: 어둠 속으로 내려감
         M.fbox(_P, ID, 0, -217, 0, 5, 430, 5, CONCD); M.fbox(_P, ID, 0, -2.6, 0, 7, 2.6, 9, CONC);
         if (u >= U.bridge0) for (const d of [60, 130]) M.fbox(_P, ID, 0, -d, 0, 6.2, 1.2, 6.2, CONC);
+        for (let d = 8; d < 200; d += 23) { M.fbox(_P, ID, 0, -d, 0, 5.6, .5, 5.6, STEELD); M.fbox(_P, ID, 2.62, -d - 4, 0, .12, 8, .12, STEELL); }      // 띠쇠와 점검 사다리
+        G.fbox(_P, ID, 2.56, -6, 0, .06, .2, .2, RED); H.raw(_Q.copy(_P).setY(_P.y - 6), 2.6, RED, .7);
       }
     }
     addBuilt(rec.group, M.build(), G.build(glowMat), H.build());
@@ -571,7 +626,7 @@ export function updateChunks(s) {
   getRun().commitThrough(Math.max(0, Math.floor((s + AHEAD + CH) / SECTOR)));
   const c0 = Math.floor((s - BACK) / CH), c1 = Math.floor((s + AHEAD) / CH), here = Math.floor(s / CH);
   for (let ci = c0; ci <= c1; ci++) if (!chunks.has(ci)) { chunks.set(ci, null); queue.push({ ci, pri: Math.abs(ci - here) }); }
-  for (const [ci, rec] of chunks) if (ci < c0 - 1 || ci > c1 + 1) { if (rec) dispose(rec.group); chunks.delete(ci); lampsDirty = true; }
+  for (const [ci, rec] of chunks) if (ci < c0 - 1 || ci > c1 + 1) { if (rec) { dispose(rec.group); rec.doors?.forEach(g => doorLeaves.delete(g)); } chunks.delete(ci); lampsDirty = true; }
   // 구역 세트: 앞 터널 안에 있을 때 미리 만들기 시작, 다음 구역 깊숙이 들어가면 정리
   const k0 = Math.floor((s - 160) / SECTOR), k1 = Math.floor((s + 330) / SECTOR);
   for (let k = Math.max(0, k0); k <= k1; k++) if (!sectors.has(k)) {
@@ -595,7 +650,7 @@ export function processQueue(budget) {
 export function resetWorld() {
   for (const rec of chunks.values()) if (rec) dispose(rec.group);
   for (const rec of sectors.values()) { rec.dead = true; dispose(rec.group); }
-  chunks.clear(); sectors.clear(); queue.length = 0; styles.clear(); lampsDirty = true;
+  chunks.clear(); sectors.clear(); doorLeaves.clear(); queue.length = 0; styles.clear(); lampsDirty = true;
 }
 /** 디버그: 현재 살아 있는 것들의 수 */
 export const worldStats = () => ({ chunks: [...chunks.values()].filter(Boolean).length, sectors: sectors.size, queue: queue.length, lamps: allLamps.length, geometries: renderer.info.memory.geometries });

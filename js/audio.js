@@ -31,18 +31,18 @@ export function initAudio() {
   padGain.gain.setTargetAtTime(1, ctx.currentTime, 2);
 }
 export function setMuted(m) { S.muted = m; if (ctx) master.gain.setTargetAtTime(m ? 0 : .7, ctx.currentTime, .05); }
-function noiseBurst(freq, q, dur, vol, type = 'bandpass', when = 0) {
+function noiseBurst(freq, q, dur, vol, type = 'bandpass', when = 0, dest = master) {
   const t = ctx.currentTime + when, src = ctx.createBufferSource(); src.buffer = noiseBuf;
   src.playbackRate.value = .8 + Math.random() * .4;
   const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
   const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-  src.connect(f).connect(g).connect(master); src.start(t, Math.random()); src.stop(t + dur + .05);
+  src.connect(f).connect(g).connect(dest); src.start(t, Math.random()); src.stop(t + dur + .05);
 }
-function tone(freq, dur, vol, type = 'sine', when = 0, slide = 0) {
+function tone(freq, dur, vol, type = 'sine', when = 0, slide = 0, dest = master) {
   const t = ctx.currentTime + when, o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
   if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
   const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-  o.connect(g).connect(master); o.start(t); o.stop(t + dur + .05);
+  o.connect(g).connect(dest); o.start(t); o.stop(t + dur + .05);
 }
 /** 레일 이음매: 대차 두 개가 차례로 지나가는 '덜컹-덜컹' */
 export function clack(speed, inside) {
@@ -83,6 +83,18 @@ export function kickSnd() { if (!ctx) return; noiseBurst(260, .8, .16, .4, 'lowp
 export function hurtSnd() { if (!ctx) return; tone(110, .3, .28, 'sawtooth', 0, .5); noiseBurst(420, .8, .22, .22, 'lowpass'); }
 export function servo(v = 1) { if (!ctx) return; tone(1900 + Math.random() * 600, .07, .03 * v, 'square', 0, .7); tone(240, .12, .03 * v, 'sawtooth', .05, 1.6); }
 export function clangSnd() { if (!ctx) return; tone(820, .3, .1, 'triangle', 0, .98); noiseBurst(2200, 3, .08, .2); tone(130, .18, .2, 'sine'); }
+/* 안드로이드: 방향(좌우)과 거리가 들리는 소리. pan -1(왼쪽)~1(오른쪽), vol 0~1 */
+function panned(pan, vol) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); const g = ctx.createGain(); g.gain.value = vol; p.connect(g).connect(master); return p; }
+export function droidSnd(kind, pan = 0, vol = 1) {
+  if (!ctx || vol < .02) return; const d = panned(pan, vol);
+  if (kind === 'wake') { for (let i = 0; i < 4; i++) tone(2600 + i * 180, .05, .05, 'square', i * .07, 1, d); tone(150, .5, .06, 'sawtooth', .1, 1.8, d); }
+  else if (kind === 'servo') { tone(1700 + Math.random() * 700, .08, .05, 'square', 0, .7, d); tone(230, .16, .05, 'sawtooth', .04, 1.7, d); }
+  else if (kind === 'knock') { noiseBurst(180, .7, .25, .5, 'lowpass', 0, d); tone(70, .2, .3, 'sine', 0, .6, d); noiseBurst(1400, 2, .08, .15, 'bandpass', .02, d); }
+  else if (kind === 'door') { noiseBurst(300, .5, .5, .5, 'lowpass', 0, d); tone(95, .5, .2, 'sawtooth', 0, .5, d); noiseBurst(2600, 3, .3, .12, 'bandpass', .05, d); }
+  else if (kind === 'scrape') { noiseBurst(2200 + Math.random() * 900, 6, .35, .12, 'bandpass', 0, d); noiseBurst(600, 2, .25, .08, 'bandpass', .1, d); }
+  else if (kind === 'land') { noiseBurst(220, .6, .35, .6, 'lowpass', 0, d); tone(60, .3, .4, 'sine', 0, .5, d); noiseBurst(3000, 3, .12, .16, 'bandpass', .02, d); }
+  else if (kind === 'grip') { tone(900, .25, .08, 'triangle', 0, .97, d); noiseBurst(1900, 4, .1, .2, 'bandpass', 0, d); }
+}
 /** 매 프레임: 속도·위치에 따라 바람 소리 */
 export function updateAudio(inVoid, inside) {
   if (!ctx) return; const t = ctx.currentTime;

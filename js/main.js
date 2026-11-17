@@ -92,7 +92,7 @@ const handlers = {
   start() { initAudio(); setMuteLabel(); whistle(); },
   use() { if (!interact()) grab(); },           // E: 레버·사다리·랙 등. 없으면 손 닿는 자원 집기
   kick, reload: startReload, lootPrompt,
-  spawnDroids() { if (hostOnly()) toast('안드로이드 ' + spawnGroup(3) + '기가 앞쪽 선로 옆에 나타났어요'); },
+  spawnDroids() { if (hostOnly()) toast('앞쪽에 안드로이드 ' + spawnGroup(3) + '기가 숨었어요'); },
   drain() { if (hostOnly()) { S.battery = 0; S.powered = false; S.notch = 0; } },
   charge() { if (hostOnly()) applyOp('charge', 100); },
   reelIn() { reelIn(); toast('안전줄을 감아 객실로 돌아왔어요'); },
