@@ -144,10 +144,10 @@ function finishCar(B, x0, x1, wheelXs, name) {
 const bogie = (x0, x1) => [x0 + 1.1, x0 + 2.2, x1 - 2.2, x1 - 1.1];
 
 /* ================= 열차 3량 (역할 고정, 정비 구역에서 업그레이드) =================
- *   운전차   : 앞유리가 있는 운전실. 조작대의 레버 3개(주행 단수 · 브레이크 · 전후진)와 전력 계기
- *   객실     : 유일하게 안전한 실내. 사다리로 지붕에 올라가면 포탑
- *   동력차   : 맨 뒤의 열린 작업차. 배터리 랙 · 발전기 · 작업대 · 비상 크랭크
- * 가장 중요한 배터리가 맨 뒤에 있어, 누군가는 열차 끝까지 오가야 한다.
+ *   운전차(맨 앞) : 앞유리가 있는 운전실. 조작대의 레버 3개(주행 단수 · 브레이크 · 전후진)와 전력 계기
+ *   동력차(가운데): 지붕 없이 드러난 배터리 칸. 배터리 랙 · 발전기 · 작업대 · 비상 크랭크
+ *   객실(맨 뒤)   : 유일하게 안전한 실내. 사다리로 지붕에 올라가면 포탑
+ * 운전실과 객실 사이를 오가려면 반드시 노출된 배터리 칸을 지나야 한다. 드론·안드로이드가 가장 노리는 곳도 여기.
  */
 const RED = C('#b5432f'), SIGN = C('#7fa89a');
 const mesh = (geo, col, m) => new THREE.Mesh(prep(geo, col, m), landMat);
@@ -173,6 +173,21 @@ D.box(1.44, 2.14, F + .95, F + 1.02, -1.4, 1.4, IRON_D, { collide: false });
 D.box(1.47, 1.5, F + .5, F + .86, -1.2, -.25, CHAR, { collide: false });                // 계기판
 D.box(-3.3, -2.5, F, F + .5, 1.0, 1.58, IRON_D);                                         // 공구 상자
 D.box(-.15, .15, F + 2.2, F + 2.45, -.15, .15, GLOWC, { collide: false, kind: 'glow' });
+const GRAB = C('#7d7553');
+/* 바깥 손잡이 봉·발판·지붕 가장자리 낙수 난간 (안드로이드가 잡는 부품. 사람도 보기에 '잡을 데'로 읽히게) */
+function exteriorGrips(B, bars, x0, x1, roofTo) {
+  for (const s of [1, -1]) {
+    for (const x of bars) {
+      B.box(x - .03, x + .03, F + .3, F + 1.95, s * 2.4 - .03, s * 2.4 + .03, GRAB, { raw: true, collide: false });
+      for (const y of [F + .32, F + 1.93]) B.box(x - .04, x + .04, y - .03, y + .03, s > 0 ? 2.3 : -2.44, s > 0 ? 2.44 : -2.3, IRON_D, { raw: true, collide: false });
+      B.box(x - .35, x + .35, F - .2, F - .14, s > 0 ? 2.3 : -2.62, s > 0 ? 2.62 : -2.3, IRON_D, { raw: true, collide: false });     // 발판
+      B.box(x - .03, x + .03, F - .2, F + .05, s > 0 ? 2.56 : -2.6, s > 0 ? 2.6 : -2.56, IRON_D, { raw: true, collide: false });
+    }
+    if (roofTo) { B.box(x0, roofTo, F + 2.82, F + 2.87, s > 0 ? 2.44 : -2.52, s > 0 ? 2.52 : -2.44, GRAB, { raw: true, collide: false });
+      for (let x = x0 + .3; x < roofTo; x += 1.4) B.box(x - .03, x + .03, F + 2.78, F + 2.84, s > 0 ? 2.36 : -2.48, s > 0 ? 2.48 : -2.36, IRON_D, { raw: true, collide: false }); }
+  }
+}
+exteriorGrips(D, [-3.1, -.9], -3.5, 2.2, 2.2);
 export const driveCar = finishCar(D, -3.5, 3.5, [-2.5, -1.4, 1.4, 2.5], '운전차');
 driveCar.enclosed = true;
 export const locoCar = driveCar;
@@ -217,6 +232,7 @@ for (const sd of [-1, 1]) {
 K.box(2.3, 3.2, RY, RY + .07, -1.6, -.9, COPPER_D, { collide: false });                    // 해치 틀
 K.box(2.4, 3.1, RY + .07, RY + .09, -1.5, -1.0, CHAR, { collide: false });
 K.box(-1.0, -.2, F + 2.8, RY + .55, -.4, .4, CHAR2);                                       // 포탑 받침
+exteriorGrips(K, [-3.0, 0, 3.0], -3.5, 3.5, 3.5);
 export const cabinCar = finishCar(K, -3.5, 3.5, [-2.5, -1.4, 1.4, 2.5], '객실');
 cabinCar.enclosed = true; cabinCar.roofY = RY;
 export const ROOF_Y = RY, LADDER_AT = new THREE.Vector3(2.75, F + 1.3, zmap(-1.27)), HATCH_AT = new THREE.Vector3(2.75, RY + .1, zmap(-1.27));
@@ -235,14 +251,16 @@ export const turretHeatMat = new THREE.MeshBasicMaterial({ color: 0x1c2224 });
 
 /* 3) 동력차 (열린 작업차) */
 const W = new CarB();
-W.base(-3.5, 3.5, ['front']);
+W.base(-3.5, 3.5, ['front', 'rear']);
 for (const s of [1, -1]) {
   const z0 = s > 0 ? 1.58 : -1.7, z1 = s > 0 ? 1.7 : -1.58;
   W.box(-3.5, 3.5, F, F + .9, z0, z1, CHAR2); W.box(-3.5, 3.5, F + .9, F + .97, z0 - .03, z1 + .03, COPPER_D, { collide: false });
   W.box(-3.5, 3.5, F + .9, F + RAIL_H, z0, z1, CHAR2, { visual: false });
 }
-W.box(3.42, 3.5, F, F + .9, -1.7, -.75, CHAR2); W.box(3.42, 3.5, F, F + .9, .75, 1.7, CHAR2);         // 앞 (객실 쪽 통로)
-W.railing(-3.5, -3.42, -1.7, 1.7);
+for (const x of [3.42, -3.5]) {                                                          // 앞(운전차 쪽)·뒤(객실 쪽) 통로
+  W.box(x, x + .08, F, F + .9, -1.7, -.75, CHAR2); W.box(x, x + .08, F, F + .9, .75, 1.7, CHAR2);
+  for (const z of [-.75, .75]) W.box(x - .02, x + .1, F, F + 1.25, z - .05, z + .05, IRON_D, { collide: false });     // 통로 기둥
+}
 const raw = { raw: true };
 // 배터리 랙: 왼쪽 벽을 따라 3단
 for (const x of [-.9, .2, 1.3]) {
@@ -262,12 +280,12 @@ W.box(-2.6, -1.3, F, F + .6, 1.5, 2.16, CHAR2, raw); W.box(-2.62, -1.28, F + .6,
 W.box(2.95, 3.05, F, F + 2.3, 1.95, 2.05, CHAR, raw);                                                  // 등 기둥
 W.box(2.7, 3.25, F + 2.25, F + 2.4, 1.75, 2.2, CHAR, { raw: true, collide: false }); W.box(2.76, 3.2, F + 2.22, F + 2.25, 1.8, 2.15, GLOWC, { raw: true, collide: false, kind: 'glow' });
 // 비상 크랭크 받침 (뒤 끝)
-W.box(-3.38, -3.1, F, F + 1.0, .5, .8, CHAR2);
+W.box(-3.38, -3.1, F, F + 1.0, 1.15, 1.5, CHAR2);
 export const powerCar = finishCar(W, -3.5, 3.5, [-2.5, -1.4, 1.4, 2.5], '동력차');
 powerCar.enclosed = false;
 export const tenderCar = powerCar;
-export const RACK_AT = new THREE.Vector3(.2, F + .8, -1.3), CRANK_AT = new THREE.Vector3(-3.0, F + 1.15, .65), BENCH_AT = new THREE.Vector3(1.3, F + 1.0, 1.5);
-export const crank = new THREE.Group(); crank.position.set(-3.05, F + 1.12, .65); powerCar.g.add(crank);
+export const RACK_AT = new THREE.Vector3(.2, F + .8, -1.3), CRANK_AT = new THREE.Vector3(-3.0, F + 1.15, zmap(1.32)), BENCH_AT = new THREE.Vector3(1.3, F + 1.0, 1.5);
+export const crank = new THREE.Group(); crank.position.set(-3.05, F + 1.12, zmap(1.32)); powerCar.g.add(crank);
 crank.add(mesh(new THREE.CylinderGeometry(.3, .3, .06, 12), IRON, M(0, 0, 0, 0, 0, Math.PI / 2))); crank.add(mesh(new THREE.BoxGeometry(.12, .07, .07), COPPER, M(.1, .24, 0)));
 export const rackSegs = [];
 for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(.2, .5, .012), segMatOff); m.position.set(-1.15 + i * .3, F + .6, -1.225); powerCar.g.add(m); rackSegs.push(m); }
@@ -276,7 +294,36 @@ export function showBattery(pct, powered) {
   for (let i = 0; i < 10; i++) { const mat = i < n ? (pct <= 20 ? segMatLow : segMatOn) : segMatOff; batterySegs[i].material = mat; rackSegs[i].material = mat; }
 }
 
-driveCar.off = 0; cabinCar.off = 3.5 + .72 + 3.5; powerCar.off = cabinCar.off + 3.5 + .72 + 3.5;
+driveCar.off = 0; powerCar.off = 3.5 + .72 + 3.5; cabinCar.off = powerCar.off + 3.5 + .72 + 3.5;      // 기관실 → 배터리 칸 → 객실
+/* ================= 잡을 수 있는 부품 =================
+ * 안드로이드는 정해진 좌표가 아니라 이 목록에서 그때그때 가까운 부품을 골라 잡는다.
+ * 정비 구역에서 객차 설비가 바뀌면 그 객차의 부품만 다시 등록하면 된다 (registerGrips).
+ *   rail   : 허리 높이 난간 (가로 막대)            → 넘어서 바닥으로 들어옴
+ *   bar    : 세로 손잡이 봉 (+ 발판)                → 매달려 버티다가 위의 gutter 로 옮겨 잡음
+ *   gutter : 지붕 옆 가장자리 (가로 막대)            → 지붕 위로
+ *   ledge  : 지붕 끝 모서리 (배터리 칸 쪽 끝벽 위)   → 배터리 칸 바닥에서 뛰어 잡고 지붕으로
+ * a·b: 차량 로컬 선분 끝점, n: 매달린 몸이 있는 바깥 방향, to: 넘어가면 닿는 바닥 높이, over: 넘을 때 걸리는 높이(잡은 점 기준) */
+export const GRIPS = [];
+export function registerGrip(car, kind, a, b, n, to) {
+  const g = { car, kind, a: new THREE.Vector3(...a), b: new THREE.Vector3(...b), n: new THREE.Vector3(...n), to };
+  g.s = Math.sign(g.n.z); GRIPS.push(g); return g;
+}
+export function clearGrips(car) { for (let i = GRIPS.length - 1; i >= 0; i--) if (GRIPS[i].car === car) GRIPS.splice(i, 1); }
+for (const s of [1, -1]) {
+  registerGrip(powerCar, 'rail', [-3.0, F + .97, s * 2.33], [3.0, F + .97, s * 2.33], [0, 0, s], F);
+  for (const x of [-3.1, -.9]) registerGrip(driveCar, 'bar', [x, F + .4, s * 2.4], [x, F + 1.9, s * 2.4], [0, 0, s], null);
+  for (const x of [-3.0, 0, 3.0]) registerGrip(cabinCar, 'bar', [x, F + .4, s * 2.4], [x, F + 1.9, s * 2.4], [0, 0, s], null);
+  registerGrip(driveCar, 'gutter', [-3.2, F + 2.84, s * 2.48], [1.9, F + 2.84, s * 2.48], [0, 0, s], ROOF_Y);
+  registerGrip(cabinCar, 'gutter', [-3.2, F + 2.84, s * 2.48], [3.2, F + 2.84, s * 2.48], [0, 0, s], ROOF_Y).over = .7;     // 객실 지붕엔 낮은 난간이 있어 그 위로 넘어옴
+}
+registerGrip(driveCar, 'ledge', [-3.6, F + 2.8, -1.3], [-3.6, F + 2.8, 1.3], [-1, 0, 0], ROOF_Y);       // 운전차 뒤 끝 (배터리 칸 쪽)
+registerGrip(cabinCar, 'ledge', [3.6, F + 2.8, -1.3], [3.6, F + 2.8, 1.3], [1, 0, 0], ROOF_Y);          // 객실 앞 끝 (배터리 칸 쪽)
+/** 선분 위에서 p(차량 로컬)에 가장 가까운 점 */
+export function gripPoint(g, p, out) {
+  const ax = g.b.x - g.a.x, ay = g.b.y - g.a.y, az = g.b.z - g.a.z, L2 = ax * ax + ay * ay + az * az || 1;
+  const u = Math.max(0, Math.min(1, ((p.x - g.a.x) * ax + (p.y - g.a.y) * ay + (p.z - g.a.z) * az) / L2));
+  return out.set(g.a.x + ax * u, g.a.y + ay * u, g.a.z + az * u);
+}
 export const spawnCar = cabinCar;           // 시작·복귀 지점: 객실
 export const SPAWN_X = 0;
 

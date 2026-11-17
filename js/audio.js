@@ -93,7 +93,30 @@ export function droidSnd(kind, pan = 0, vol = 1) {
   else if (kind === 'door') { noiseBurst(300, .5, .5, .5, 'lowpass', 0, d); tone(95, .5, .2, 'sawtooth', 0, .5, d); noiseBurst(2600, 3, .3, .12, 'bandpass', .05, d); }
   else if (kind === 'scrape') { noiseBurst(2200 + Math.random() * 900, 6, .35, .12, 'bandpass', 0, d); noiseBurst(600, 2, .25, .08, 'bandpass', .1, d); }
   else if (kind === 'land') { noiseBurst(220, .6, .35, .6, 'lowpass', 0, d); tone(60, .3, .4, 'sine', 0, .5, d); noiseBurst(3000, 3, .12, .16, 'bandpass', .02, d); }
+  else if (kind === 'tick') { tone(3200 + Math.random() * 900, .018, .05, 'square', 0, .9, d); noiseBurst(5000, 8, .03, .12, 'bandpass', 0, d); }      // 고개가 한 칸 걸리는 소리
+  else if (kind === 'shriek') { tone(1900, .7, .06, 'sawtooth', 0, .45, d); tone(2050, .7, .05, 'square', .02, .5, d); noiseBurst(3400, 2, .5, .14, 'bandpass', 0, d); tone(110, .6, .1, 'sawtooth', 0, .6, d); }
+  else if (kind === 'glass') { noiseBurst(900, .9, .18, .55, 'lowpass', 0, d); noiseBurst(4200, 5, .12, .22, 'bandpass', .01, d); tone(85, .18, .25, 'sine', 0, .6, d); }
+  else if (kind === 'step') { noiseBurst(160, .8, .12, .35, 'lowpass', 0, d); noiseBurst(2400, 6, .05, .06, 'bandpass', .01, d); }
   else if (kind === 'grip') { tone(900, .25, .08, 'triangle', 0, .97, d); noiseBurst(1900, 4, .1, .2, 'bandpass', 0, d); }
+}
+/* 회수 드론: 회전익 웅웅거림(지속음, 드론마다 하나) + 경고음 */
+export function droneVoice() {
+  if (!ctx) return null;
+  const p = ctx.createStereoPanner(), g = ctx.createGain(); g.gain.value = 0; p.connect(g).connect(master);
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), f = ctx.createBiquadFilter(); o1.type = 'sawtooth'; o2.type = 'square';
+  o1.frequency.value = 118; o2.frequency.value = 121; f.type = 'bandpass'; f.frequency.value = 520; f.Q.value = 1.2;
+  const og = ctx.createGain(); og.gain.value = .5; o1.connect(f); o2.connect(og).connect(f); f.connect(p); o1.start(); o2.start();
+  return { set(pan, vol, pitch) { const t = ctx.currentTime; p.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), t, .05); g.gain.setTargetAtTime(vol, t, .08);
+      o1.frequency.setTargetAtTime(118 * pitch, t, .1); o2.frequency.setTargetAtTime(121.5 * pitch, t, .1); f.frequency.setTargetAtTime(420 + 300 * pitch, t, .1); },
+    stop() { try { o1.stop(); o2.stop(); } catch (e) {} g.disconnect(); } };
+}
+export function droneSnd(kind, pan = 0, vol = 1) {
+  if (!ctx || vol < .02) return; const d = panned(pan, vol);
+  if (kind === 'lock') { for (let i = 0; i < 3; i++) tone(1320, .06, .07, 'square', i * .11, 1, d); }
+  else if (kind === 'dive') { tone(900, .9, .07, 'sawtooth', 0, .3, d); noiseBurst(1800, 1.5, .6, .1, 'bandpass', 0, d); }
+  else if (kind === 'clamp') { noiseBurst(700, 1, .2, .45, 'lowpass', 0, d); tone(240, .25, .12, 'square', 0, .5, d); }
+  else if (kind === 'steal') { tone(300, .6, .1, 'sawtooth', 0, 2.4, d); tone(1200, .2, .06, 'triangle', .3, 1.4, d); }
+  else if (kind === 'crash') { noiseBurst(400, .6, .7, .6, 'lowpass', 0, d); noiseBurst(3000, 3, .3, .2, 'bandpass', .05, d); tone(70, .6, .3, 'sine', 0, .4, d); }
 }
 /** 매 프레임: 속도·위치에 따라 바람 소리 */
 export function updateAudio(inVoid, inside) {

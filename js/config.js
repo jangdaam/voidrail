@@ -28,7 +28,14 @@ export const ANDROID = {
   hp: 3, max: 8, firstDelay: 35, gapMin: 16, gapMax: 34,      // 무리 사이 시간 (열차가 움직인 시간 기준)
   latchMaxSpeed: 17,          // 이보다 빠르면 붙잡지 못하고 튕겨 나감
   shakeSpeed: 15,             // 매달린 채 이 속도를 넘으면 버티다 떨어짐
-  climb: 3.2, walk: 1.7, hit: 12, hitCool: 1.6,
+  climb: 3.2, walk: 1.0, sprint: 4.2, crawl: .8, hit: 12, hitCool: 1.8,
+};
+/* 회수 드론: 배터리를 노림 */
+export const DRONE = {
+  hp: 4, max: 3, firstDelay: 60, gapMin: 45, gapMax: 80,     // 출현 간격 (열차가 움직인 시간 기준)
+  orbit: 9, speed: 11, dive: 16,                             // 맴도는 반경·비행 속도·급강하 속도
+  clamp: 2.4,                                                // 배터리 집게를 물리는 데 걸리는 시간
+  hit: 8,
 };
 export const HP = { max: 100, regen: 5, regenDelay: 6 };
 export const START_S = 46;       // 시작 위치 (첫 구역 정비 터널 안)

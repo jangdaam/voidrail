@@ -196,6 +196,7 @@ function frame() {
   if (S.started && !S.onTurret) updatePlayer(dt);
   playerWorld(wp);
   updateCamera(dt, snap); snap = false;
+  if (window.__camHook) window.__camHook(camera);                       // 시험용: 카메라를 열차 밖 원하는 곳에
   updateAvatar(wp, dt);
   updateInteract();
   updateLoot();
