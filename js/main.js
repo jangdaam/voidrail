@@ -14,6 +14,7 @@ import { initPower, applyOp, updatePower, powerState, applyPowerState, resetPowe
 import { initLoot, updateLoot, grab, lootPrompt, onPicked, takenList, applyTaken, resetLoot } from './loot.js';
 import { initCombat, updateCombat, hurt, kick, startReload, toggleTurret, resetCombat, sparkAt } from './combat.js';
 import { initAndroids, updateAndroids, spawnGroup, clearAndroids } from './android.js';
+import { initDrones, updateDrones, spawnDrone, clearDrones } from './drone.js';
 import { plugIn } from './audio.js';
 import { player, ext, updatePlayer, updateCamera, updateAvatar, playerWorld, reelIn } from './player.js';
 import { updateEnv } from './env.js';
@@ -37,7 +38,7 @@ renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault
 
 let snap = true, running = true, loadT = 0;
 const startLoading = () => { S.loading = true; loadT = 0; fade(true); };
-function regenerate() { resetWorld(); resetLoot(); clearAndroids(); snap = true; updateChunks(S.sTrain); startLoading(); }
+function regenerate() { resetWorld(); resetLoot(); clearAndroids(); clearDrones(); snap = true; updateChunks(S.sTrain); startLoading(); }
 function newRun() { resetPower(); resetCombat(); reelIn(); }
 
 /* ---------------- 멀티플레이: 맵은 하나뿐이고, 시드와 열차 위치는 기관사(방장) 기준 ---------------- */
@@ -93,6 +94,7 @@ const handlers = {
   use() { if (!interact()) grab(); },           // E: 레버·사다리·랙 등. 없으면 손 닿는 자원 집기
   kick, reload: startReload, lootPrompt,
   spawnDroids() { if (hostOnly()) toast('앞쪽에 안드로이드 ' + spawnGroup(3) + '기가 숨었어요'); },
+  spawnDrone() { if (hostOnly()) toast(spawnDrone() ? '회수 드론이 다가와요 — 배터리 칸을 지켜요' : '드론이 이미 많아요'); },
   drain() { if (hostOnly()) { S.battery = 0; S.powered = false; S.notch = 0; } },
   charge() { if (hostOnly()) applyOp('charge', 100); },
   reelIn() { reelIn(); toast('안전줄을 감아 객실로 돌아왔어요'); },
@@ -117,6 +119,7 @@ initPower({ toast, send: netSend });
 initLoot({ toast, sendPick: id => session?.sendPick(id) });
 initCombat({ toast, fade });
 initAndroids({ hurt, reward(pos) { S.scrap++; if (Math.random() < .25) S.parts++; sparkAt(pos, 10, 0xa8c6ea); } });
+initDrones({ toast, spark: sparkAt, reward(pos) { S.scrap += 2; S.parts++; sparkAt(pos, 14, 0xffb070); } });
 // 운전차: 레버 3개
 addInteractable({ id: 'notch', car: driveCar, pos: LEVER_AT.notch, r: 1.7, prompt: () => `주행 ${S.notch}단 · E: 올리기 · Q: 내리기`, act: () => { applyOp('notch+'); }, alt: () => { applyOp('notch-'); } });
 addInteractable({ id: 'brake', car: driveCar, pos: LEVER_AT.brake, r: 1.7, prompt: () => 'E: 브레이크 ' + (S.brake ? '풀기' : '걸기'), act: () => { applyOp('brake'); } });
@@ -202,6 +205,7 @@ function frame() {
   updateLoot();
   aTargets[0].x = player.p.x - player.car.off; aTargets[0].y = player.p.y; aTargets[0].z = player.p.z; aTargets[0].roof = player.p.y > F + 2.4;
   updateAndroids(dt, !isClient(), player.inGrav && S.hp > 0 ? aTargets : NO_TARGETS);
+  updateDrones(dt, !isClient());
   session?.update(dt, S.time); PM('player');
 
   sky.position.copy(camera.position);
@@ -224,7 +228,7 @@ window.voidrailEvents = Object.freeze({
 });
 
 // 개발·테스트용 훅
-window.__debug = { S, player, applyOp, spawnGroup, hurt, reelIn, camera, setView: v => import('./ui.js').then(m => m.setView(v)), regenerate, worldStats, getRun, handlers, get session() { return session; }, joinRoom };
+window.__debug = { S, player, spawnDrone, applyOp, spawnGroup, hurt, reelIn, camera, setView: v => import('./ui.js').then(m => m.setView(v)), regenerate, worldStats, getRun, handlers, get session() { return session; }, joinRoom };
 
 // Reproducible design review views, shared by server and offline builds.
 if(params.has('yaw')) player.yaw=Number(params.get('yaw'));

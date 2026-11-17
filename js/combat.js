@@ -8,6 +8,7 @@ import { S } from './state.js';
 import { player, reelIn } from './player.js';
 import { cabinCar, turret, turretHeatMat } from './train.js';
 import { rayAndroid, damageAndroid, kickAndroid } from './android.js';
+import { rayDrone, damageDrone, kickDrone } from './drone.js';
 import * as A from './audio.js';
 
 let H = {};                                   // { toast, fade }
@@ -43,16 +44,17 @@ const _o = new THREE.Vector3(), _d = new THREE.Vector3(), _e = new THREE.Vector3
 
 function hitMark(kill) { g.mark = kill ? .3 : .14; const el = $('hitmark'); el.className = kill ? 'on kill' : 'on'; }
 function shoot(origin, dir, range, dmg, from) {
-  const h = rayAndroid(origin, dir, range);
-  _e.copy(origin).addScaledVector(dir, h ? h.dist : range); tracer(from, _e);
-  if (h) { sparkAt(h.point, 7); hitMark(damageAndroid(h.droid, h.head ? dmg * 2 : dmg, dir, h.point)); }
+  const h = rayAndroid(origin, dir, range), hd = rayDrone(origin, dir, h ? h.dist : range);
+  _e.copy(origin).addScaledVector(dir, hd ? hd.dist : h ? h.dist : range); tracer(from, _e);
+  if (hd) { sparkAt(hd.point, 9, 0xffc080); hitMark(damageDrone(hd.drone, dmg, dir)); }
+  else if (h) { sparkAt(h.point, 7); hitMark(damageAndroid(h.droid, h.head ? dmg * 2 : dmg, dir, h.point)); }
 }
 export function startReload() { if (g.reload > 0 || g.ammo === GUN.mag) return; g.reload = GUN.reload; A.reloadSnd(false); }
 
 /** 발차기 (F) */
 export function kick() {
   if (g.kick > 0 || g.dead || S.onTurret) return; g.kick = KICK.cool; A.kickSnd(); S.shake = Math.max(S.shake, .05);
-  camera.getWorldDirection(_d); if (kickAndroid(camera.position, _d, KICK.range)) { hitMark(false); S.shake = Math.max(S.shake, .1); }
+  camera.getWorldDirection(_d); if (kickDrone(camera.position, _d, KICK.range) || kickAndroid(camera.position, _d, KICK.range)) { hitMark(false); S.shake = Math.max(S.shake, .1); }
 }
 /* 포탑 타기/내리기 */
 export function toggleTurret() {

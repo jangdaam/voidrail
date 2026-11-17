@@ -60,6 +60,7 @@ export function initUI(handlers) {
   $('bQual').onclick = () => { autoQuality = false; setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(S.quality) + 1) % 3]); };
   $('bMute').onclick = () => H.toggleMute();
   $('bDroid').onclick = () => H.spawnDroids();
+  $('bDrone').onclick = () => H.spawnDrone();
   $('bDrain').onclick = () => H.drain();
   $('bCharge').onclick = () => H.charge();
   $('resume').onclick = () => tryLock();
