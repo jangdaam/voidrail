@@ -1,5 +1,4 @@
-// Web Audio 합성 사운드 (파일 없음): 레일 덜컹, 증기, 바람, 지역 앰비언트, 기적, 줍기
-import { BIOMES } from './config.js';
+// Web Audio 합성 사운드 (파일 없음): 레일 덜컹, 증기, 바람, 낮은 기계음, 기적, 사슬
 import { S } from './state.js';
 
 let ctx = null, master, windGain, windFilter, padGain, padFilter, noiseBuf, pads = [];
@@ -17,20 +16,17 @@ export function initAudio() {
   windGain = ctx.createGain(); windGain.gain.value = 0;
   wn.connect(windFilter).connect(windGain).connect(master); wn.start();
   // 지역 앰비언트 패드 (화음 3음 + 약한 디튠)
-  padFilter = ctx.createBiquadFilter(); padFilter.type = 'lowpass'; padFilter.frequency.value = 900;
+  padFilter = ctx.createBiquadFilter(); padFilter.type = 'lowpass'; padFilter.frequency.value = 260;
   padGain = ctx.createGain(); padGain.gain.value = 0; padFilter.connect(padGain).connect(master);
   for (let i = 0; i < 6; i++) {
     const o = ctx.createOscillator(); o.type = i < 3 ? 'triangle' : 'sine';
     const g = ctx.createGain(); g.gain.value = i < 3 ? .05 : .03; o.connect(g).connect(padFilter); o.start(); pads.push(o);
   }
-  setChord(S.biomeIdx);
+  const DRONE = [55, 82.4, 110.6];        // 낮게 깔리는 기계음
+  pads.forEach((o, i) => o.frequency.value = DRONE[i % 3] * (i < 3 ? 1 : 1.006));
   padGain.gain.setTargetAtTime(1, ctx.currentTime, 2);
 }
 export function setMuted(m) { S.muted = m; if (ctx) master.gain.setTargetAtTime(m ? 0 : .7, ctx.currentTime, .05); }
-export function setChord(biomeIdx) {
-  if (!ctx) return; const ch = BIOMES[biomeIdx].chord, t = ctx.currentTime;
-  pads.forEach((o, i) => o.frequency.setTargetAtTime(ch[i % 3] * (i < 3 ? 1 : 2.003), t, 1.5));
-}
 function noiseBurst(freq, q, dur, vol, type = 'bandpass', when = 0) {
   const t = ctx.currentTime + when, src = ctx.createBufferSource(); src.buffer = noiseBuf;
   src.playbackRate.value = .8 + Math.random() * .4;
@@ -60,44 +56,21 @@ export function whistle() {
   }
   noiseBurst(2500, .5, 1.2, .04, 'highpass');
 }
-export function chime(type) {
-  if (!ctx) return; const base = type === 'wood' ? 659 : 784;
-  tone(base, .35, .12, 'triangle'); tone(base * 1.5, .45, .09, 'sine', .07);
-}
-/* 도구·보일러 소리 */
-export function hiss() { if (!ctx) return; noiseBurst(5200, .7, .55, .07, 'highpass'); }
-export function scoopSnd() { if (!ctx) return; noiseBurst(900, 1.5, .18, .16); tone(140, .12, .12, 'triangle', .02, .8); }
-export function stokeSnd() { if (!ctx) return; noiseBurst(300, .6, .5, .2, 'lowpass'); for (let i = 0; i < 6; i++) noiseBurst(2500 + Math.random() * 2000, 3, .04, .08, 'bandpass', .1 + Math.random() * .5); }
-export function gunSnd() { if (!ctx) return; noiseBurst(1400, .5, .25, .45, 'lowpass'); tone(110, .18, .3, 'square', 0, .4); noiseBurst(3500, 1, .4, .05, 'highpass', .05); }
-export function hookSnd(latch) { if (!ctx) return; if (latch) { tone(1200, .08, .12, 'square'); noiseBurst(2200, 4, .06, .1); } else { noiseBurst(1800, 1.2, .25, .12, 'bandpass'); tone(400, .25, .06, 'sawtooth', 0, 2); } }
-export function clankSnd() { if (!ctx) return; tone(1450, .35, .1, 'triangle'); tone(2210, .25, .06, 'sine'); noiseBurst(3000, 2, .05, .1); }
-export function clickSnd() { if (!ctx) return; tone(900, .04, .06, 'square'); }
-/* 전투 */
-export function hitThwack() { if (!ctx) return; noiseBurst(700, 1.2, .12, .3, 'lowpass'); tone(180, .1, .22, 'square', 0, .5); tone(1800, .05, .05, 'triangle'); }
-export function killPop() { if (!ctx) return; noiseBurst(500, .7, .35, .35, 'lowpass'); tone(620, .25, .12, 'sawtooth', 0, .25); tone(1320, .12, .08, 'triangle', .03, 1.6); }
-export function hurt() { if (!ctx) return; tone(120, .3, .3, 'sawtooth', 0, .5); noiseBurst(400, .8, .25, .25, 'lowpass'); }
-export function chitter(n = 1) { if (!ctx) return; for (let i = 0; i < 4 * n; i++) tone(2400 + Math.random() * 1500, .04, .035, 'square', i * .055); }
-export function chew() { if (!ctx) return; noiseBurst(1600, 3, .09, .09); tone(300 + Math.random() * 120, .07, .05, 'square'); }
-export function raidHorn() { if (!ctx) return; for (const [f, w] of [[196, 0], [185, .55], [196, 1.1]]) { tone(f, .5, .12, 'sawtooth', w); tone(f * 1.5, .5, .05, 'sawtooth', w); } }
-export function raidClear() { if (!ctx) return; [523, 659, 784, 1047].forEach((f, i) => tone(f, .5, .07, 'triangle', i * .1)); }
-/* 추적자 */
-let rumbleSrc = null, rumbleGain = null;
-export function setRumble(level) {
-  if (!ctx) return;
-  if (!rumbleSrc) {
-    rumbleSrc = ctx.createBufferSource(); rumbleSrc.buffer = noiseBuf; rumbleSrc.loop = true;
-    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 160;
-    rumbleGain = ctx.createGain(); rumbleGain.gain.value = 0; rumbleSrc.connect(f).connect(rumbleGain).connect(master); rumbleSrc.start();
+/** 화물판이 움직이기 시작할 때: 사슬이 팽팽해지는 금속 신음 + 낮은 권상기 소리 (한 번) */
+export function chainGroan() {
+  if (!ctx) return; const t = ctx.currentTime;
+  for (const [f, v, w] of [[62, .16, 0], [93, .08, .15], [47, .12, .5]]) {
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * .8, t + w); o.frequency.linearRampToValueAtTime(f, t + w + 1.2); o.frequency.linearRampToValueAtTime(f * .96, t + w + 4.5);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t + w); g.gain.linearRampToValueAtTime(v, t + w + .9); g.gain.setValueAtTime(v, t + w + 2.6); g.gain.exponentialRampToValueAtTime(.0001, t + w + 5);
+    o.connect(lp).connect(g).connect(master); o.start(t + w); o.stop(t + w + 5.2);
   }
-  rumbleGain.gain.setTargetAtTime(level * .55, ctx.currentTime, .3);
+  for (let i = 0; i < 7; i++) noiseBurst(900 + Math.random() * 1600, 9, .18, .05, 'bandpass', .2 + i * .22 + Math.random() * .1);   // 사슬 고리가 차례로 당겨지는 소리
+  tone(1480, 1.6, .025, 'triangle', .9, .97);
 }
-export function chaseRoar(v = 1) { if (!ctx) return; tone(70, 1.1, .2 * v, 'sawtooth', 0, .6); tone(104, .9, .12 * v, 'sawtooth', .05, .7); noiseBurst(300, .6, 1.0, .18 * v, 'lowpass'); }
-export function ramCrash() { if (!ctx) return; noiseBurst(200, .5, .8, .6, 'lowpass'); tone(55, .7, .4, 'square', 0, .5); noiseBurst(2600, 1, .4, .15, 'bandpass', .05); }
-export function biomeSting() { if (!ctx) return; const ch = BIOMES[S.biomeIdx].chord; ch.forEach((f, i) => tone(f * 2, 1.6, .05, 'sine', i * .18)); }
-/** 매 프레임: 속도·무중력 여부에 따라 바람, 밤에 패드 필터 낮춤 */
+/** 매 프레임: 속도·위치에 따라 바람 소리 */
 export function updateAudio(inVoid, inside) {
   if (!ctx) return; const t = ctx.currentTime;
   const w = (inVoid ? .16 : inside ? .02 : .06) + Math.min(.12, S.speed / 300);
   windGain.gain.setTargetAtTime(w, t, .4); windFilter.frequency.setTargetAtTime(inVoid ? 380 : 520 + S.speed * 8, t, .5);
-  padFilter.frequency.setTargetAtTime(500 + 700 * S.day, t, 1);
 }

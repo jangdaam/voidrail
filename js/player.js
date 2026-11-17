@@ -4,13 +4,13 @@ import { clamp } from './noise.js';
 import { C, prep, M, landMat } from './geo.js';
 import { trackPos, frameAt, makeFrame } from './track.js';
 import { scene, camera } from './scene.js';
-import { CARS, spawnCar, HALF_W } from './train.js';
+import { CARS, spawnCar, SPAWN_X, HALF_W } from './train.js';
 import { F } from './config.js';
 import { Avatar } from './avatar.js';
 import { S } from './state.js';
 
 const PR = .3, PH = 1.75, EYE = 1.62;
-export const player = { car: spawnCar, p: new THREE.Vector3(0, F + .05, 0), v: new THREE.Vector3(), yaw: -Math.PI / 2, pitch: 0, grounded: false, inGrav: true, bob: 0, landed: 0 };
+export const player = { car: spawnCar, p: new THREE.Vector3(SPAWN_X, F + .05, 0), v: new THREE.Vector3(), yaw: -Math.PI / 2, pitch: 0, grounded: false, inGrav: true, bob: 0, landed: 0 };
 
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _w = new THREE.Vector3(), _l = new THREE.Vector3(), _vv = new THREE.Vector3(), _before = new THREE.Vector3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -88,7 +88,7 @@ export function updatePlayer(dt) {
   }
   if (P.p.length() > 60 || !Number.isFinite(P.p.x)) reelIn();
 }
-export function reelIn() { player.car = spawnCar; player.p.set(0, F + .05, 0); player.v.set(0, 0, 0); }
+export function reelIn() { player.car = spawnCar; player.p.set(SPAWN_X, F + .05, 0); player.v.set(0, 0, 0); }
 export const playerWorld = (out, h = .9) => out.copy(player.p).setY(player.p.y + h).applyMatrix4(player.car.g.matrixWorld);
 export const nearLever = (pos) => player.car.name === '기관실' && player.p.distanceTo(pos) < 1.8;
 

@@ -1,9 +1,7 @@
-// HUD, 입력, 버튼, 로딩 페이드, 토스트, 자동 품질 조절, 디버그 패널
+// 입력, 버튼, 로딩 페이드, 토스트, 자동 품질 조절, 디버그 패널 (평소 화면엔 조준점뿐)
 import { renderer } from './scene.js';
 import { player, ext } from './player.js';
 import { interact, promptText } from './interact.js';
-import { selectTool, useTool, toolPrompt, toggleHolster } from './tools.js';
-import { queueLength } from './world.js';
 import { QUALITY, QUALITY_ORDER } from './config.js';
 import { clamp } from './noise.js';
 import { S } from './state.js';
@@ -19,8 +17,6 @@ export function initUI(handlers) {
     if (e.code === 'Space') e.preventDefault();
     if (e.repeat || !S.started) return;
     if (e.code === 'KeyE') interact();
-    if (/^Digit[1-4]$/.test(e.code)) selectTool(+e.code[5] - 1);
-    if (e.code === 'KeyH') toggleHolster();
     if (e.code === 'KeyP') import('./mpui.js').then(m => m.toggleMP());
     if (e.code === 'KeyX') H.faster(); if (e.code === 'KeyZ') H.slower();
     if (e.code === 'KeyR') H.reelIn();
@@ -35,7 +31,6 @@ export function initUI(handlers) {
   let dragging = false;
   document.addEventListener('pointerlockchange', () => { S.locked = document.pointerLockElement === cvs; updateResume(); });
   cvs.addEventListener('pointerdown', e => {
-    if (S.locked && S.viewMode === 'fp' && e.button === 0) { useTool(); return; }
     dragging = true; if (!S.locked) tryLock();
   });
   addEventListener('pointerup', () => dragging = false);
@@ -44,7 +39,7 @@ export function initUI(handlers) {
     if (S.viewMode === 'fp') { player.yaw -= e.movementX * .0022; player.pitch = clamp(player.pitch - e.movementY * .0022, -1.5, 1.5); }
     else { ext.yaw += e.movementX * .006; ext.pitch = clamp(ext.pitch + e.movementY * .004, -.5, 1.1); }
   });
-  cvs.addEventListener('wheel', e => { if (S.viewMode === 'fp' && S.started && !S.holstered) { selectTool(S.tool + (e.deltaY > 0 ? 1 : -1)); e.preventDefault(); return; } if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
+  cvs.addEventListener('wheel', e => { if (S.viewMode !== 'fp') { ext.zoom = clamp(ext.zoom * (e.deltaY > 0 ? 1.1 : .9), .35, 3); e.preventDefault(); } }, { passive: false });
 
   // 안내 카드 없이 바로 탑승. 소리·마우스 고정은 브라우저 규칙상 첫 클릭/키 입력 때 시작
   $('start').style.display = 'none'; S.started = true;
@@ -54,12 +49,10 @@ export function initUI(handlers) {
   $('go').onclick = () => { prime(); tryLock(); updateResume(); };     // (테스트 호환)
   $('bView').onclick = () => setView(S.viewMode === 'fp' ? 'ext' : 'fp');
   $('bNext').onclick = () => H.nextRegion();
-  $('bTime').onclick = e => { S.timeMul = S.timeMul === 1 ? 10 : 1; e.target.textContent = '시간 ×' + S.timeMul; };
+  $('bHome').onclick = () => H.restart();
   $('bSeed').onclick = () => H.newSeed();
   $('bQual').onclick = () => { autoQuality = false; setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(S.quality) + 1) % 3]); };
   $('bMute').onclick = () => H.toggleMute();
-  $('bRaid').onclick = () => H.raidNow();
-  $('bChase').onclick = () => H.chaseNow();
   $('resume').onclick = () => tryLock();
   setDebug(S.debug, true);
   setQuality(S.quality, true);
@@ -80,7 +73,7 @@ export function setQuality(q, silent) {
   $('bQual').textContent = '품질: ' + QUALITY[q].label;
   if (!silent) toast(`그래픽 품질: ${QUALITY[q].label}`);
 }
-/** 디버그 모드: 상태 표시·버튼·측정 패널. 평소엔 체력과 퀵슬롯만 */
+/** 디버그 모드(F3): 상태 표시·버튼·측정 패널 */
 export function setDebug(on, silent) {
   S.debug = on; document.body.classList.toggle('dbg', on); $('debug').hidden = !on;
   if (!silent) toast(on ? '디버그 모드 켜짐 (F3로 끄기)' : '디버그 모드 꺼짐');
@@ -106,31 +99,20 @@ function perf(dt) {
   }
 }
 
-let invFlash = 0;
-export const flashInv = () => invFlash = .4;
 export function updateHUD(dt) {
   perf(dt);
-  $('sBiome').textContent = '지역 · ' + S.biomeName;
-  $('sDist').textContent = '거리 · ' + (S.sTrain / 1000).toFixed(2) + ' km';
-  $('sSpeed').textContent = '속도 · ' + Math.round(S.speed * 3.6) + ' km/h' + (S.targetSpeed === 0 ? ' (정지 중)' : '');
-  const m = Math.floor(S.tod * 1440); $('sTime').textContent = '시각 · ' + String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
-  $('mode').textContent = player.inGrav ? '⚙ ' + player.car.name : '🪢 무중력 유영 — R: 안전줄 감기';
-  invFlash = Math.max(0, invFlash - dt);
-  const iv = S.inv; $('inv').textContent = `배낭 · 목재 ${iv.wood} · 고철 ${iv.scrap}`;
-  $('inv').classList.toggle('flash', invFlash > 0);
-  const ptxt = promptText() || toolPrompt();
+  const ptxt = promptText();
   $('prompt').textContent = ptxt;
   $('cross').classList.toggle('target', !!ptxt);   // 평소 화면: 글자 대신 조준점이 고리로
-  $('boil').textContent = `🔥 불 ${Math.round(S.heat * 100)}% · 압력 ${Math.round(S.pressure * 100)}%`;
-  $('boil').classList.toggle('low', S.pressure < .3);
-  $('hpfill').style.width = S.hp + '%'; $('hp').classList.toggle('low', S.hp < 35);
-  const CH = H.chaseInfo?.(); $('chase').hidden = !CH;
-  if (CH) { const g = Math.max(0, CH.gap); $('chaseTxt').textContent = `뒤 ${Math.round(g)}m`; $('chaseDot').style.left = (100 - Math.min(100, g / 5.6)) + '%'; $('chase').classList.toggle('near', g < 90); }
-  const R = H.raidInfo?.(); $('raidbar').hidden = !R?.active; if (R?.active) $('raidbar').textContent = `⚠ 습격 중 · 공허 진드기 ${R.alive}마리`;
   $('cross').style.display = S.viewMode === 'fp' && S.started ? 'block' : 'none';
+  if (!S.debug) return;
+  $('sBiome').textContent = S.region;
+  $('sDist').textContent = '거리 · ' + (S.sTrain / 1000).toFixed(2) + ' km';
+  $('sSpeed').textContent = '속도 · ' + Math.round(S.speed * 3.6) + ' km/h' + (S.targetSpeed === 0 ? ' (정지 중)' : '');
+  $('mode').textContent = player.inGrav ? '⚙ ' + player.car.name : '🪢 열차 밖 — R: 안전줄 감기';
   if (S.debug) {
-    const info = renderer.info.render;
-    $('debug').textContent = `FPS ${lastFps.toFixed(0)} · draw ${info.calls} · tris ${(info.triangles / 1000).toFixed(0)}k · 생성 대기 ${queueLength()} · 품질 ${S.quality}\n` +
+    const info = renderer.info.render, w = H.worldStats();
+    $('debug').textContent = `FPS ${lastFps.toFixed(0)} · draw ${info.calls} · tris ${(info.triangles / 1000).toFixed(0)}k · 생성 대기 ${w.queue} · 품질 ${S.quality} · 청크 ${w.chunks} · 구역 ${w.sectors} · 지오메트리 ${w.geometries}\n` +
       `player ${player.car.name} (${player.p.x.toFixed(2)}, ${player.p.y.toFixed(2)}, ${player.p.z.toFixed(2)}) ${player.grounded ? 'ground' : 'air'} ${player.inGrav ? 'grav' : 'void'}` +
       (H.netStats?.() || []).map(n => `\nnet ${n.name}: rtt ${n.rtt}ms · 재생지연 ${n.delay}ms · 지터 ${n.jitter}ms · 외삽 ${n.extrap}% · ${n.fast ? '비신뢰채널' : '신뢰채널'}`).join('');
   }

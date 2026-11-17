@@ -9,7 +9,7 @@ import { S } from './state.js';
 
 // 시작 기차 팔레트: 차콜 · 철 · 구리 (CarB 기본 부품이 쓰는 이름은 같은 톤으로 재정의)
 const CHAR = C('#2b2b2f'), CHAR2 = C('#38383d'), IRON = C('#6b7078'), IRON_D = C('#4b4f56'), COPPER = C('#b8733f'), COPPER_D = C('#8a5732'),
-  GLOWC = C('#ffd98a'), FIRE = C('#ff7a2e');
+  GLOWC = C('#dbe6f2'), FIRE = C('#ff7a2e');
 const DARK = CHAR, GOLD = COPPER, WOOD = C('#5a4a3e'), FLOOR = C('#4f463f'), CREAM = C('#8e8a84'), CEIL = C('#7d7770');
 const RAIL_H = 1.25;   // 난간 충돌 높이 (점프로 못 넘음, 시각 난간은 1.0)
 
@@ -236,13 +236,17 @@ export const cabinCar = finishCar(K, -4.6, 3.5, [-2.5, -1.4, 1.4, 2.5], '숙소�
 cabinCar.enclosed = true; cabinCar.roofX0 = -3.5;   // 이보다 뒤(발코니)는 지붕 없음
 
 locoCar.off = 0; tenderCar.off = 4 + .72 + 3; cabinCar.off = tenderCar.off + 3 + .72 + 3.5;
-export const spawnCar = cabinCar;           // 시작·안전줄 복귀 지점
+export const spawnCar = locoCar;            // 시작·안전줄 복귀 지점: 기관실 (앞이 보이는 자리)
+export const SPAWN_X = -2.7;
 
 /* 조명 */
-export const headLight = new THREE.SpotLight(0xffe2a8, 0, 90, .45, .6, 1.2);
+export const headLight = new THREE.SpotLight(0xdbe8f5, 420, 150, .5, .7, 1.3);
 headLight.position.set(3.7, F + 2.05, 0); locoCar.g.add(headLight, headLight.target); headLight.target.position.set(25, 0, 0);
-export const lamps = [[locoCar, -.4, F + .6, 0, 0xff7a30, 4], [tenderCar, 2.9, F + 2.3, 1.25 + WIDEN, 0xffc870, 0], [cabinCar, 0, F + 2.0, 0, 0xffc870, 5]]
-  .map(([car, x, y, z, c, dayI]) => { const l = new THREE.PointLight(c, 0, 10, 2); l.position.set(x, y, z); l.userData.dayI = dayI; car.g.add(l); return l; });
+export const lamps = [[locoCar, -.4, F + .6, 0, 0xc9dcf0, 4], [tenderCar, 2.9, F + 2.3, 1.25 + WIDEN, 0xc9dcf0, 0], [cabinCar, 0, F + 2.0, 0, 0xc9dcf0, 5]]
+  .map(([car, x, y, z, c]) => { const l = new THREE.PointLight(c, 7, 11, 2); l.position.set(x, y, z); car.g.add(l); return l; });
+/* 화실 불빛 */
+export const fireMat = new THREE.MeshBasicMaterial({ color: 0xff7a2e });
+{ const f = new THREE.Mesh(new THREE.BoxGeometry(.013, .4, .5), fireMat); f.position.set(-.968, F + .6, 0); locoCar.g.add(f); }
 
 /* 객차 사이 주름막: 양쪽이 모두 막힌 차량일 때만 (시작 기차엔 없음) */
 const bellows = [];

@@ -131,7 +131,6 @@ export class Session {
       r.avatar.holder.quaternion.copy(car.g.quaternion);
       Object.assign(r.st, { speed: Math.hypot(o.v.x, o.v.z), vy: o.v.y, grounded: !!(o.flags & FLAG_GROUND), inGrav: !!(o.flags & FLAG_GRAV), yaw: o.yaw, pitch: o.pitch });
       (r.tp ||= new THREE.Vector3()).set(o.p.x ?? o.p[0], o.p.y ?? o.p[1], o.p.z ?? o.p[2]); r.flags = o.flags;
-      r.avatar.setTool(flagTool(o.flags), flagLoaded(o.flags));
       r.avatar.update(dt, r.st, time);
     }
   }
