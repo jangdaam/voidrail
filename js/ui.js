@@ -1,7 +1,7 @@
 // 입력, 버튼, 로딩 페이드, 토스트, 자동 품질 조절, 디버그 패널 (평소 화면엔 조준점뿐)
 import { renderer } from './scene.js';
 import { player, ext } from './player.js';
-import { interact, promptText } from './interact.js';
+import { interact, interactAlt, promptText } from './interact.js';
 import { QUALITY, QUALITY_ORDER } from './config.js';
 import { clamp } from './noise.js';
 import { S } from './state.js';
@@ -16,10 +16,11 @@ export function initUI(handlers) {
     if (e.code === 'F3') e.preventDefault();          // 브라우저 '찾기' 막기
     if (e.code === 'Space') e.preventDefault();
     if (e.repeat || !S.started) return;
-    if (e.code === 'KeyE') interact();
+    if (e.code === 'KeyE') H.use();
+    if (e.code === 'KeyQ') interactAlt();
+    if (e.code === 'KeyF') H.kick();
     if (e.code === 'KeyP') import('./mpui.js').then(m => m.toggleMP());
-    if (e.code === 'KeyX') H.faster(); if (e.code === 'KeyZ') H.slower();
-    if (e.code === 'KeyR') H.reelIn();
+    if (e.code === 'KeyR') { if (player.inGrav) H.reload(); else H.reelIn(); }
     if (e.code === 'KeyV') setView(S.viewMode === 'fp' ? 'ext' : 'fp');
     if (e.code === 'KeyM') H.toggleMute();
     if (e.code === 'F3' || e.code === 'Backquote') { e.preventDefault(); setDebug(!S.debug); }
@@ -31,9 +32,10 @@ export function initUI(handlers) {
   let dragging = false;
   document.addEventListener('pointerlockchange', () => { S.locked = document.pointerLockElement === cvs; updateResume(); });
   cvs.addEventListener('pointerdown', e => {
+    if (S.locked && e.button === 0) S.fire = true;
     dragging = true; if (!S.locked) tryLock();
   });
-  addEventListener('pointerup', () => dragging = false);
+  addEventListener('pointerup', () => { dragging = false; S.fire = false; });
   addEventListener('mousemove', e => {
     if (!S.locked && !dragging) return;
     if (S.viewMode === 'fp') { player.yaw -= e.movementX * .0022; player.pitch = clamp(player.pitch - e.movementY * .0022, -1.5, 1.5); }
@@ -57,6 +59,9 @@ export function initUI(handlers) {
   $('bSeed').onclick = () => H.newSeed();
   $('bQual').onclick = () => { autoQuality = false; setQuality(QUALITY_ORDER[(QUALITY_ORDER.indexOf(S.quality) + 1) % 3]); };
   $('bMute').onclick = () => H.toggleMute();
+  $('bDroid').onclick = () => H.spawnDroids();
+  $('bDrain').onclick = () => H.drain();
+  $('bCharge').onclick = () => H.charge();
   $('resume').onclick = () => tryLock();
   setDebug(S.debug, true);
   setQuality(S.quality, true);
@@ -106,7 +111,7 @@ function perf(dt) {
 
 export function updateHUD(dt) {
   perf(dt);
-  const ptxt = promptText();
+  const ptxt = promptText() || H.lootPrompt();
   $('prompt').textContent = ptxt;
   $('cross').classList.toggle('target', !!ptxt);   // 평소 화면: 글자 대신 조준점이 고리로
   $('cross').style.display = S.viewMode === 'fp' && S.started ? 'block' : 'none';
@@ -114,7 +119,7 @@ export function updateHUD(dt) {
   $('directorStatus').textContent = H.directorStatus();
   $('sBiome').textContent = S.region;
   $('sDist').textContent = '거리 · ' + (S.sTrain / 1000).toFixed(2) + ' km';
-  $('sSpeed').textContent = '속도 · ' + Math.round(S.speed * 3.6) + ' km/h' + (S.targetSpeed === 0 ? ' (정지 중)' : '');
+  $('sSpeed').textContent = `${S.dir > 0 ? '전진' : '후진'} ${S.notch}단${S.brake ? ' · 브레이크' : ''} · ${Math.round(Math.abs(S.speed) * 3.6)} km/h · 전력 ${S.battery.toFixed(0)}%${S.powered ? '' : ' (방전)'}`;
   $('mode').textContent = player.inGrav ? '⚙ ' + player.car.name : '🪢 열차 밖 — R: 안전줄 감기';
   if (S.debug) {
     const info = renderer.info.render, w = H.worldStats();

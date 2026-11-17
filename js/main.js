@@ -4,18 +4,24 @@ import { S } from './state.js';
 import {getRun, resetRun} from './run-state.js';
 import {EVENT_TYPES} from './run-director.js';
 import { setSeed, getSeed } from './noise.js';
-import { RAIL_JOINT, QUALITY, VMAX, START_S } from './config.js';
+import { RAIL_JOINT, QUALITY, START_S } from './config.js';
 import { arcScale, regionAt, SECTOR } from './track.js';
 import { renderer, scene, camera, sky, applyQuality } from './scene.js';
 import { updateChunks, processQueue, resetWorld, animateWorld, queueLength, updateLights, setCargoListener, worldStats } from './city.js';
-import { placeTrain, toTrainCoord, trainToWorld, HALF_W, locoCar, LEVER_POS } from './train.js';
+import { placeTrain, toTrainCoord, trainToWorld, HALF_W, driveCar, cabinCar, powerCar, LEVER_AT, LADDER_AT, HATCH_AT, ROOF_Y, RACK_AT, CRANK_AT, turret } from './train.js';
+import { DRIVE } from './config.js';
+import { initPower, applyOp, updatePower, powerState, applyPowerState, resetPower } from './power.js';
+import { initLoot, updateLoot, grab, lootPrompt, onPicked, takenList, applyTaken, resetLoot } from './loot.js';
+import { initCombat, updateCombat, hurt, kick, startReload, toggleTurret, resetCombat, sparkAt } from './combat.js';
+import { initAndroids, updateAndroids, spawnGroup, clearAndroids } from './android.js';
+import { plugIn } from './audio.js';
 import { player, ext, updatePlayer, updateCamera, updateAvatar, playerWorld, reelIn } from './player.js';
 import { updateEnv } from './env.js';
 
 import { initAudio, setMuted, clack, whistle, updateAudio, chainGroan } from './audio.js';
 import { initUI, updateHUD, toast, fade, setMuteLabel, showError } from './ui.js';
 import { Session, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT } from './net/session.js';
-import { addInteractable, updateInteract } from './interact.js';
+import { addInteractable, updateInteract, interact, currentTarget } from './interact.js';
 import { makeTransport } from './net/transport.js';
 import { now } from './net/clock.js';
 import { initMPUI, setPeers, setMPStatus } from './mpui.js';
@@ -31,7 +37,8 @@ renderer.domElement.addEventListener('webglcontextlost', e => { e.preventDefault
 
 let snap = true, running = true, loadT = 0;
 const startLoading = () => { S.loading = true; loadT = 0; fade(true); };
-function regenerate() { resetWorld(); snap = true; updateChunks(S.sTrain); startLoading(); }
+function regenerate() { resetWorld(); resetLoot(); clearAndroids(); snap = true; updateChunks(S.sTrain); startLoading(); }
+function newRun() { resetPower(); resetCombat(); reelIn(); }
 
 /* ---------------- 멀티플레이: 맵은 하나뿐이고, 시드와 열차 위치는 기관사(방장) 기준 ---------------- */
 let session = null, netTrain = null;
@@ -49,7 +56,7 @@ const netHooks = {
     return snapOut;
   },
   trainToWorld,
-  getTrain: () => ({ s: S.sTrain, speed: S.loading ? 0 : S.speed * timeScale, targetSpeed: S.targetSpeed, seed: getSeed(), run: getRun().snapshot() }),
+  getTrain: () => ({ s: S.sTrain, speed: S.loading ? 0 : S.speed * timeScale, targetSpeed: S.targetSpeed, seed: getSeed(), run: getRun().snapshot(), pw: powerState() }),
   applyTrain(st, ageMs) {
     if (!st || !Number.isFinite(st.s) || !Number.isFinite(st.speed) || !Number.isFinite(st.targetSpeed) || !Number.isInteger(st.seed)) return;
     const seedChanged = st.seed !== getSeed();
@@ -58,11 +65,12 @@ const netHooks = {
     const predicted = st.s + st.speed * Math.max(0, ageMs) / 1000 / arcScale(st.s);
     if (seedChanged || result.needsRebuild) { S.sTrain = predicted; regenerate(); toast('기관사의 운행과 이벤트 배치를 맞췄어요'); }
     netTrain = { s: st.s, speed: st.speed, at: now() - ageMs };
-    if (S.targetSpeed !== st.targetSpeed) S.targetSpeed = st.targetSpeed;
+    applyPowerState(st.pw);
   },
   onWorldOffer(st) { netHooks.applyTrain(st, 0); },
-  onControl(ts, by) { const was = S.targetSpeed; S.targetSpeed = ts; if (was === 0 && ts > 0) { whistle(); toast(`${by} 님이 열차를 출발시켰어요`); } else if (ts === 0 && was > 0) toast(`${by} 님이 열차를 세웠어요`); },
-  onPick() {}, takenList: () => [], applyTaken() {},
+  onControl() {},
+  onEv(d) { if (d.k === 'op' && typeof d.op === 'string') applyOp(d.op, d.arg, true); },
+  onPick(id) { onPicked(id); }, takenList, applyTaken,
   onPeers: list => setPeers(list, session),
   log: msg => toast(msg),
 };
@@ -78,25 +86,22 @@ async function joinRoom(code, name) {
   } catch (e) { console.error(e); setMPStatus('연결 실패: ' + (e.message || e)); session = null; }
 }
 async function leaveRoom() { if (session) await session.stop(); session = null; netTrain = null; setMPStatus('혼자 타는 중'); setPeers([], null); }
-const controlChanged = () => session?.sendControl(S.targetSpeed);
 const hostOnly = () => { if (isClient()) { toast('이건 기관사(방장)만 할 수 있어요'); return false; } return true; };
 
 const handlers = {
   start() { initAudio(); setMuteLabel(); whistle(); },
-  toggleTrain() {
-    if (S.targetSpeed > 0) { S.lastTarget = S.targetSpeed; S.targetSpeed = 0; }
-    else { S.targetSpeed = S.lastTarget || 6; whistle(); S.shake = Math.max(S.shake, .08); }
-    controlChanged();
-  },
-  faster() { const was = S.targetSpeed; S.targetSpeed = Math.min(VMAX, S.targetSpeed + 4); if (was === 0) { whistle(); } controlChanged(); },
-  slower() { S.targetSpeed = Math.max(0, S.targetSpeed - 4); controlChanged(); },
-  reelIn() { reelIn(); toast('안전줄을 감아 기관실로 돌아왔어요'); },
+  use() { if (!interact()) grab(); },           // E: 레버·사다리·랙 등. 없으면 손 닿는 자원 집기
+  kick, reload: startReload, lootPrompt,
+  spawnDroids() { if (hostOnly()) toast('안드로이드 ' + spawnGroup(3) + '기가 앞쪽 선로 옆에 나타났어요'); },
+  drain() { if (hostOnly()) { S.battery = 0; S.powered = false; S.notch = 0; } },
+  charge() { if (hostOnly()) applyOp('charge', 100); },
+  reelIn() { reelIn(); toast('안전줄을 감아 객실로 돌아왔어요'); },
   toggleMute() { setMuted(!S.muted); setMuteLabel(); },
   snap() { snap = true; },
   applyQuality(q) { applyQuality(q); },
   nextRegion() { if (!hostOnly()) return; S.sTrain = (Math.floor(S.sTrain / SECTOR) + 1) * SECTOR + START_S; regenerate(); },
-  restart() { if (!hostOnly()) return; S.sTrain = START_S; resetRun(); regenerate(); },
-  newSeed() { if (!hostOnly()) return; setSeed((Math.random() * 1e9) | 0); S.sTrain = START_S; resetRun(); regenerate(); toast('새 시드: ' + getSeed()); },
+  restart() { if (!hostOnly()) return; S.sTrain = START_S; resetRun(); newRun(); regenerate(); },
+  newSeed() { if (!hostOnly()) return; setSeed((Math.random() * 1e9) | 0); S.sTrain = START_S; resetRun(); newRun(); regenerate(); toast('새 시드: ' + getSeed()); },
   completeGoal(goal) { if (!hostOnly()) return; const r = getRun().completeGoal(goal,S.sTrain); toast(r.duplicate ? '이미 달성한 목표예요' : '목표 달성: 전방의 안전한 구간에 공간을 예약했어요'); return r; },
   jumpToEvent() { if (!hostOnly()) return; const e=getRun().events.find(e=>e.sector!==null && e.phase!=='completed'); if(!e) {toast('먼저 목표를 달성하거나 트리거를 실행해 주세요');return;} S.sTrain=e.sector*SECTOR-180; regenerate(); },
   jumpPastEvent() { if (!hostOnly()) return; const e=getRun().events.find(e=>e.sector!==null && e.phase!=='completed'); if(!e)return; S.sTrain=(e.sector+1)*SECTOR+20; regenerate(); },
@@ -106,16 +111,38 @@ const handlers = {
   worldStats,
 };
 initUI(handlers);
+/* ---------------- 열차의 조작 지점 ---------------- */
+const netSend = d => session?.sendEv(d);
+initPower({ toast, send: netSend });
+initLoot({ toast, sendPick: id => session?.sendPick(id) });
+initCombat({ toast, fade });
+initAndroids({ hurt, reward(pos) { S.scrap++; if (Math.random() < .25) S.parts++; sparkAt(pos, 10, 0xa8c6ea); } });
+// 운전차: 레버 3개
+addInteractable({ id: 'notch', car: driveCar, pos: LEVER_AT.notch, r: 1.7, prompt: () => `주행 ${S.notch}단 · E: 올리기 · Q: 내리기`, act: () => { applyOp('notch+'); }, alt: () => { applyOp('notch-'); } });
+addInteractable({ id: 'brake', car: driveCar, pos: LEVER_AT.brake, r: 1.7, prompt: () => 'E: 브레이크 ' + (S.brake ? '풀기' : '걸기'), act: () => { applyOp('brake'); } });
+addInteractable({ id: 'dir', car: driveCar, pos: LEVER_AT.dir, r: 1.7, prompt: () => (S.dir > 0 ? '전진' : '후진') + ' · E: 방향 바꾸기 (정차 중에만)', act: () => { applyOp('dir'); } });
+// 객실: 사다리 ↔ 지붕 해치, 포탑
+addInteractable({ id: 'ladder', car: cabinCar, pos: LADDER_AT, r: 1.8, prompt: () => player.p.y < F + 2 ? 'E: 지붕으로 올라가기' : null, act: () => { player.p.set(2.6, ROOF_Y + .05, -1.35); player.v.set(0, 0, 0); } });
+addInteractable({ id: 'hatch', car: cabinCar, pos: HATCH_AT, r: 1.9, prompt: () => player.p.y > F + 2.5 && !S.onTurret ? 'E: 객실로 내려가기' : null, act: () => { player.p.set(2.1, F + .05, -1.2); player.v.set(0, 0, 0); } });
+addInteractable({ id: 'turret', car: cabinCar, pos: turret.at, r: 2.3, prompt: () => player.p.y > F + 2.5 ? (S.onTurret ? 'E: 포탑에서 내리기 · 좌클릭: 사격' : 'E: 포탑 잡기') : null, act: () => { toggleTurret(); } });
+// 동력차: 배터리 랙, 비상 크랭크
 addInteractable({
-  id: 'lever', car: locoCar, pos: LEVER_POS.clone().setY(F + 1.2), r: 1.9,
-  prompt: () => 'E: ' + (S.targetSpeed > 0 ? '정지' : '출발') + ' · Z/X: 속도 조절',
-  act: () => { handlers.toggleTrain(); },
+  id: 'rack', car: powerCar, pos: RACK_AT, r: 2.2,
+  prompt: () => `전력 ${S.battery.toFixed(0)}%` + (S.carry ? ' · E: 대형 배터리 꽂기' : S.cells ? ` · E: 소형 전지 넣기 (${S.cells})` : ''),
+  act() {
+    if (S.carry) { S.carry = null; applyOp('charge', DRIVE.large); plugIn(); }
+    else if (S.cells > 0) { S.cells--; applyOp('charge', DRIVE.small); plugIn(); }
+    else return false;
+  },
 });
+addInteractable({ id: 'crank', car: powerCar, pos: CRANK_AT, r: 1.8, prompt: () => S.powered ? null : 'E 누르고 있기: 크랭크 돌리기', act: () => {} });
 setCargoListener(() => chainGroan());
 initMPUI(handlers, params);
 updateChunks(S.sTrain);
 startLoading();
 
+const aTargets = [{ x: 0, y: 0, z: 0, roof: false }], NO_TARGETS = [];
+setTimeout(() => toast('운전차 조작대: 브레이크를 풀고 주행 단수를 올리면 출발해요'), 2500);
 const clock = new THREE.Clock();
 const wp = new THREE.Vector3();
 let lastJoint = 0;
@@ -148,9 +175,11 @@ function frame() {
     if (queueLength() === 0 || loadT > 6) { S.loading = false; fade(false); }
   } else processQueue(QUALITY[S.quality].budget); PM('build');
 
-  S.speed += (S.targetSpeed - S.speed) * Math.min(1, dt * (S.targetSpeed < S.speed ? .5 : .7));
+  const crankHeld = !S.powered && !!S.keys.KeyE && currentTarget()?.id === 'crank';
+  updatePower(dt, !isClient(), crankHeld);
   const before = S.sTrain;
   S.sTrain += S.loading && !isClient() ? 0 : S.speed * dt / arcScale(S.sTrain);
+  if (S.sTrain < -20) { S.sTrain = -20; S.speed = 0; }                       // 출발선 뒤의 닫힌 격문
   syncTrain(realDt);              // 실제 시간 기준: 프레임이 아주 느린 탭도 기관사 위치를 따라잡음
   const travelled = S.sTrain - before;
   if (!isClient()) for(const e of getRun().update(S.sTrain)) { if(S.debug) toast(EVENT_TYPES[e.type].label + (e.phase==='completed'?' 통과 완료':e.phase==='active'?' 진입':' 접근 중')); }
@@ -158,21 +187,25 @@ function frame() {
 
   const inside = player.inGrav && Math.abs(player.p.z) < HALF_W - .1 && player.car.enclosed && !(player.p.x < (player.car.roofX0 ?? -1e9));
   const joint = Math.floor(S.sTrain / RAIL_JOINT);
-  if (joint !== lastJoint) { lastJoint = joint; clack(S.speed, player.inGrav); if (player.inGrav && player.grounded && S.speed > 2) S.shake = Math.max(S.shake, Math.min(.03, S.speed * .0012)); }
+  if (joint !== lastJoint) { lastJoint = joint; clack(Math.abs(S.speed), player.inGrav); if (player.inGrav && player.grounded && Math.abs(S.speed) > 2) S.shake = Math.max(S.shake, Math.min(.03, Math.abs(S.speed) * .0012)); }
 
 
   updateEnv();
   updateChunks(S.sTrain); PM('plan');
   placeTrain();
-  if (S.started) updatePlayer(dt);
+  if (S.started && !S.onTurret) updatePlayer(dt);
   playerWorld(wp);
   updateCamera(dt, snap); snap = false;
   updateAvatar(wp, dt);
   updateInteract();
+  updateLoot();
+  aTargets[0].x = player.p.x - player.car.off; aTargets[0].y = player.p.y; aTargets[0].z = player.p.z; aTargets[0].roof = player.p.y > F + 2.4;
+  updateAndroids(dt, !isClient(), player.inGrav && S.hp > 0 ? aTargets : NO_TARGETS);
   session?.update(dt, S.time); PM('player');
 
   sky.position.copy(camera.position);
   animateWorld(); updateLights(dt); 
+  updateCombat(dt, !!S.fire);
   updateAudio(!player.inGrav, inside); PM('anim');
   if (!NO_RENDER) renderer.render(scene, camera); PM('render');
   updateHUD(dt); PE();
@@ -190,12 +223,12 @@ window.voidrailEvents = Object.freeze({
 });
 
 // 개발·테스트용 훅
-window.__debug = { S, player, reelIn, camera, setView: v => import('./ui.js').then(m => m.setView(v)), regenerate, worldStats, getRun, handlers, get session() { return session; }, joinRoom };
+window.__debug = { S, player, applyOp, spawnGroup, hurt, reelIn, camera, setView: v => import('./ui.js').then(m => m.setView(v)), regenerate, worldStats, getRun, handlers, get session() { return session; }, joinRoom };
 
 // Reproducible design review views, shared by server and offline builds.
 if(params.has('yaw')) player.yaw=Number(params.get('yaw'));
 if(params.has('pitch')) player.pitch=Number(params.get('pitch'));
-if(params.has('stop')) { S.targetSpeed=0; S.speed=0; }
+if(params.has('go')) { S.brake=false; S.notch=Math.max(1,Math.min(4,+params.get('go')||1)); }
 if(params.has('ext')) import('./ui.js').then(m=>m.setView('ext'));
 
 if(params.has('orbitYaw')) ext.yaw=Number(params.get('orbitYaw'));

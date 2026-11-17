@@ -15,6 +15,19 @@
   #cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(0,0,0,.35);pointer-events:none;display:none}
   #prompt{position:fixed;left:50%;top:58%;transform:translateX(-50%);font-size:15px;font-weight:700;text-shadow:0 2px 4px rgba(0,0,0,.6);pointer-events:none;white-space:nowrap}
   #mode{position:fixed;left:16px;top:14px}
+  #hitmark{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;opacity:0;transform:rotate(45deg) scale(.7)}
+  #hitmark::before,#hitmark::after{content:'';position:absolute;background:#fff}
+  #hitmark::before{left:9px;top:0;width:2px;height:20px;background:linear-gradient(#fff 32%,transparent 32% 68%,#fff 68%)}
+  #hitmark::after{top:9px;left:0;height:2px;width:20px;background:linear-gradient(90deg,#fff 32%,transparent 32% 68%,#fff 68%)}
+  #hitmark.on{opacity:1;transform:rotate(45deg) scale(1)}
+  #hitmark.kill{transform:rotate(45deg) scale(1.4);filter:drop-shadow(0 0 3px #ff5a48)}
+  #vign{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(170,20,20,.55) 100%)}
+  #hp{position:fixed;left:18px;bottom:20px;width:170px;height:8px;border-radius:5px;background:rgba(10,12,24,.55);overflow:hidden}
+  #hpfill{height:100%;width:100%;background:#c9d6e2;transition:width .15s}
+  #hp.low #hpfill{background:#e0563a}
+  #inv{position:fixed;left:18px;bottom:36px;font-size:12px;font-weight:700;opacity:.75;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+  #status{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);font-size:13px;font-weight:700;letter-spacing:.08em;opacity:.8;text-shadow:0 1px 3px rgba(0,0,0,.7);white-space:nowrap}
+  body.dbg #status{bottom:112px}
   body:not(.dbg) #mode, body:not(.dbg) #ui, body:not(.dbg) #prompt, body:not(.dbg) #resume{display:none !important}
   #cross.target{width:16px;height:16px;margin:-8px 0 0 -8px;background:transparent;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1.5px rgba(0,0,0,.35),inset 0 0 0 1.5px rgba(0,0,0,.25);transition:all .1s}
   #resume{position:fixed;left:50%;top:64%;transform:translateX(-50%);cursor:pointer}
@@ -48,7 +61,12 @@
 <div id="banner"></div>
 <div id="toast" class="pill"></div>
 <div id="cross"></div>
+<div id="hitmark"></div>
+<div id="vign"></div>
 <div id="prompt"></div>
+<div id="hp"><div id="hpfill"></div></div>
+<div id="inv"></div>
+<div id="status"></div>
 <div id="mode" class="pill"></div>
 <div id="debug" hidden></div>
 <div id="resume" class="pill" hidden>클릭하면 시점 조작을 다시 시작해요</div>
@@ -71,7 +89,7 @@
     <span class="stat" id="sBiome">-</span><span class="stat" id="sDist">-</span><span class="stat" id="sSpeed">-</span>
   </div>
   <div class="row">
-    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bHome">처음으로 ⏮</button><button id="bNext">다음 구간 ⏭</button><button id="bSeed">새 시드</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
+    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bHome">처음으로 ⏮</button><button id="bNext">다음 구간 ⏭</button><button id="bSeed">새 시드</button><button id="bDroid">안드로이드 🤖</button><button id="bDrain">전력 0%</button><button id="bCharge">충전</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
   </div>
 </div>
 <div id="fade" class="on">…</div>

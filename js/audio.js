@@ -66,10 +66,28 @@ export function chainGroan() {
   for (let i = 0; i < 7; i++) noiseBurst(900 + Math.random() * 1600, 9, .18, .05, 'bandpass', .2 + i * .22 + Math.random() * .1);   // 사슬 고리가 차례로 당겨지는 소리
   tone(1480, 1.6, .025, 'triangle', .9, .97);
 }
+/* 조작·전력 */
+export function leverClick() { if (!ctx) return; tone(520, .05, .08, 'square'); noiseBurst(2400, 3, .05, .1); }
+export function powerDown() { if (!ctx) return; tone(180, 1.4, .16, 'sawtooth', 0, .2); noiseBurst(300, .7, .6, .12, 'lowpass', .1); }
+export function powerUp() { if (!ctx) return; tone(70, .9, .12, 'sawtooth', 0, 3); tone(660, .25, .05, 'triangle', .7); }
+export function crankTick() { if (!ctx) return; noiseBurst(1300, 4, .05, .12); tone(160, .06, .08, 'square'); }
+export function pickupSnd(big) { if (!ctx) return; tone(big ? 330 : 620, .1, .08, 'triangle'); tone(big ? 495 : 930, .14, .06, 'triangle', .07); }
+export function plugIn() { if (!ctx) return; noiseBurst(900, 2, .09, .16); tone(220, .3, .09, 'sawtooth', .05, 2.2); tone(880, .2, .05, 'triangle', .3); }
+/* 전투 */
+export function gunSnd() { if (!ctx) return; noiseBurst(1500, .5, .22, .42, 'lowpass'); tone(120, .16, .28, 'square', 0, .4); noiseBurst(3800, 1, .3, .05, 'highpass', .04); }
+export function turretSnd() { if (!ctx) return; noiseBurst(900, .6, .12, .3, 'lowpass'); tone(90, .09, .22, 'square', 0, .5); }
+export function reloadSnd(end) { if (!ctx) return; if (end) { tone(700, .05, .09, 'square'); noiseBurst(2600, 4, .06, .12, 'bandpass', .06); } else { noiseBurst(1800, 3, .07, .1); tone(300, .08, .06, 'square', .12); } }
+export function overheatSnd() { if (!ctx) return; noiseBurst(5200, .7, .8, .09, 'highpass'); }
+export function hitSnd(kill) { if (!ctx) return; noiseBurst(kill ? 500 : 800, 1.2, kill ? .3 : .1, .3, 'lowpass'); tone(kill ? 300 : 1500, kill ? .3 : .05, kill ? .1 : .06, kill ? 'sawtooth' : 'triangle', 0, kill ? .3 : 1); }
+export function kickSnd() { if (!ctx) return; noiseBurst(260, .8, .16, .4, 'lowpass'); tone(90, .12, .25, 'sine', 0, .6); }
+export function hurtSnd() { if (!ctx) return; tone(110, .3, .28, 'sawtooth', 0, .5); noiseBurst(420, .8, .22, .22, 'lowpass'); }
+export function servo(v = 1) { if (!ctx) return; tone(1900 + Math.random() * 600, .07, .03 * v, 'square', 0, .7); tone(240, .12, .03 * v, 'sawtooth', .05, 1.6); }
+export function clangSnd() { if (!ctx) return; tone(820, .3, .1, 'triangle', 0, .98); noiseBurst(2200, 3, .08, .2); tone(130, .18, .2, 'sine'); }
 /** 매 프레임: 속도·위치에 따라 바람 소리 */
 export function updateAudio(inVoid, inside) {
   if (!ctx) return; const t = ctx.currentTime;
-  motor.frequency.setTargetAtTime(42+S.speed*2.2,t,.5); motorGain.gain.setTargetAtTime(Math.min(.05,S.speed*.002),t,.4);
-  const w = (inVoid ? .16 : inside ? .02 : .06) + Math.min(.12, S.speed / 300);
-  windGain.gain.setTargetAtTime(w, t, .4); windFilter.frequency.setTargetAtTime(inVoid ? 380 : 520 + S.speed * 8, t, .5);
+  const sp = Math.abs(S.speed);
+  motor.frequency.setTargetAtTime(42+sp*2.2,t,.5); motorGain.gain.setTargetAtTime(S.powered ? Math.min(.05,sp*.002) : 0,t,.4);
+  const w = (inVoid ? .16 : inside ? .02 : .06) + Math.min(.12, sp / 300);
+  windGain.gain.setTargetAtTime(w, t, .4); windFilter.frequency.setTargetAtTime(inVoid ? 380 : 520 + sp * 8, t, .5);
 }

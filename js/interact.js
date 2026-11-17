@@ -35,3 +35,5 @@ export const promptText = () => currentText;
 export const currentTarget = () => current;
 /** E 키 */
 export function interact() { return current ? current.act('use') !== false : false; }
+/** Q 키 (레버를 반대로 등) */
+export function interactAlt() { return current?.alt ? current.alt() !== false : false; }
