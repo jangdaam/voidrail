@@ -45,7 +45,7 @@ function hitMark(kill) { g.mark = kill ? .3 : .14; const el = $('hitmark'); el.c
 function shoot(origin, dir, range, dmg, from) {
   const h = rayAndroid(origin, dir, range);
   _e.copy(origin).addScaledVector(dir, h ? h.dist : range); tracer(from, _e);
-  if (h) { sparkAt(h.point, 7); hitMark(damageAndroid(h.droid, h.head ? dmg * 2 : dmg)); }
+  if (h) { sparkAt(h.point, 7); hitMark(damageAndroid(h.droid, h.head ? dmg * 2 : dmg, dir, h.point)); }
 }
 export function startReload() { if (g.reload > 0 || g.ammo === GUN.mag) return; g.reload = GUN.reload; A.reloadSnd(false); }
 
