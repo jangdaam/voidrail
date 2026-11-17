@@ -63,10 +63,10 @@ const toArrayBuffer = d => d instanceof ArrayBuffer ? d : d.buffer ? d.buffer.sl
 export class LocalTransport extends Emitter {
   constructor({ lag = 60, jitter = 20, loss = 0 } = {}) {
     super(); this.lag = lag; this.jitter = jitter; this.loss = loss; this.kind = 'local';
-    this.selfId = 'L' + Math.random().toString(36).slice(2, 8); this.seen = new Map(); this.relClock = new Map();
+    this.active=false; this.selfId = 'L' + Math.random().toString(36).slice(2, 8); this.seen = new Map(); this.relClock = new Map();
   }
   async join(roomCode) {
-    this.bc = new BroadcastChannel('voidrail-' + roomCode);
+    this.active=true; this.bc = new BroadcastChannel('voidrail-' + roomCode);
     this.bc.onmessage = e => this.recv(e.data);
     this.post({ k: 'hello' });
     this.hb = setInterval(() => {
@@ -77,29 +77,31 @@ export class LocalTransport extends Emitter {
     addEventListener('beforeunload', () => this.post({ k: 'bye' }));
     return this.selfId;
   }
-  post(m) { this.bc.postMessage({ ...m, from: this.selfId }); }
+  post(m) { if (!this.active) return; this.bc.postMessage({ ...m, from: this.selfId }); }
   recv(m) {
+    if (!this.active) return;
     if (m.from === this.selfId || (m.to && m.to !== this.selfId && !(Array.isArray(m.to) && m.to.includes(this.selfId)))) return;
     const isNew = !this.seen.has(m.from);
+    if (isNew && !['hello','hb','bye'].includes(m.k) && !(m.k==='rel' && m.t==='hello')) return;
     this.seen.set(m.from, performance.now());
     if (m.k === 'bye') { this.seen.delete(m.from); this.emit('leave', m.from); return; }
     if (isNew) { this.emit('join', m.from); if (m.k === 'hello') this.post({ k: 'hb', to: m.from }); }
     if (m.k === 'fast') {
       if (Math.random() < this.loss) return;                               // 손실
-      setTimeout(() => this.emit('fast', m.from, m.buf), this.lag + Math.random() * this.jitter);   // 순서 뒤바뀜 허용
+      setTimeout(() => { if (this.active && this.seen.has(m.from)) this.emit('fast', m.from, m.buf); }, this.lag + Math.random() * this.jitter);   // 순서 뒤바뀜 허용
     } else if (m.k === 'rel') {
       // 신뢰 채널: 지연은 있지만 순서 유지 (손실 시 TCP 처럼 재전송 지연이 생긴 것으로 처리)
       const extra = Math.random() < this.loss ? this.lag * 2 : 0;
       const t = Math.max(performance.now() + this.lag + Math.random() * this.jitter + extra, (this.relClock.get(m.from) || 0) + 1);
       this.relClock.set(m.from, t);
-      setTimeout(() => this.emit('rel', m.from, m.t, m.d), t - performance.now());
+      setTimeout(() => { if (this.active && this.seen.has(m.from)) this.emit('rel', m.from, m.t, m.d); }, t - performance.now());
     }
   }
   peers() { return [...this.seen.keys()]; }
   fastOpen() { return true; }
   sendFast(buf) { this.post({ k: 'fast', buf }); }
   sendRel(type, data, to = null) { this.post({ k: 'rel', t: type, d: data, to }); }
-  async leave() { this.post({ k: 'bye' }); clearInterval(this.hb); this.bc.close(); }
+  async leave() { this.post({ k: 'bye' }); this.active=false; clearInterval(this.hb); this.seen.clear(); this.bc.close(); }
 }
 
 export function makeTransport(params) {

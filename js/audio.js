@@ -1,7 +1,7 @@
 // Web Audio 합성 사운드 (파일 없음): 레일 덜컹, 증기, 바람, 낮은 기계음, 기적, 사슬
 import { S } from './state.js';
 
-let ctx = null, master, windGain, windFilter, padGain, padFilter, noiseBuf, pads = [];
+let ctx = null, master, windGain, windFilter, padGain, padFilter, noiseBuf, motor, motorGain, pads = [];
 export const audioReady = () => !!ctx;
 
 export function initAudio() {
@@ -10,6 +10,10 @@ export function initAudio() {
   master = ctx.createGain(); master.gain.value = S.muted ? 0 : .7; master.connect(ctx.destination);
   noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+
+  motor=ctx.createOscillator(); motor.type='triangle'; motor.frequency.value=42;
+  motorGain=ctx.createGain(); motorGain.gain.value=0;
+  motor.connect(motorGain).connect(master); motor.start();
   // 바람
   const wn = ctx.createBufferSource(); wn.buffer = noiseBuf; wn.loop = true;
   windFilter = ctx.createBiquadFilter(); windFilter.type = 'bandpass'; windFilter.frequency.value = 500; windFilter.Q.value = .6;
@@ -47,14 +51,8 @@ export function clack(speed, inside) {
 }
 export function chuff(speed) { if (!ctx) return; noiseBurst(420 + speed * 6, .8, .22, .1 + Math.min(.12, speed / 300), 'lowpass'); }
 export function whistle() {
-  if (!ctx) return; const t = ctx.currentTime;
-  for (const [f, v] of [[523, .07], [659, .06], [784, .045]]) {
-    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * .97, t); o.frequency.linearRampToValueAtTime(f, t + .15);
-    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800;
-    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + .08); g.gain.setValueAtTime(v, t + .9); g.gain.exponentialRampToValueAtTime(.0001, t + 1.4);
-    o.connect(lp).connect(g).connect(master); o.start(t); o.stop(t + 1.5);
-  }
-  noiseBurst(2500, .5, 1.2, .04, 'highpass');
+  if(!ctx)return;
+  tone(220,.35,.045,'triangle');tone(293,.4,.035,'triangle',.4);
 }
 /** 화물판이 움직이기 시작할 때: 사슬이 팽팽해지는 금속 신음 + 낮은 권상기 소리 (한 번) */
 export function chainGroan() {
@@ -71,6 +69,7 @@ export function chainGroan() {
 /** 매 프레임: 속도·위치에 따라 바람 소리 */
 export function updateAudio(inVoid, inside) {
   if (!ctx) return; const t = ctx.currentTime;
+  motor.frequency.setTargetAtTime(42+S.speed*2.2,t,.5); motorGain.gain.setTargetAtTime(Math.min(.05,S.speed*.002),t,.4);
   const w = (inVoid ? .16 : inside ? .02 : .06) + Math.min(.12, S.speed / 300);
   windGain.gain.setTargetAtTime(w, t, .4); windFilter.frequency.setTargetAtTime(inVoid ? 380 : 520 + S.speed * 8, t, .5);
 }

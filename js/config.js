@@ -16,5 +16,5 @@ export const QUALITY = {
 export const QUALITY_ORDER = ['high', 'medium', 'low'];
 
 /* 분위기 */
-export const FOG_COLOR = 0x2a3c4f;   // 먼 곳이 녹아드는 청회색 안개 (가까운 구조물은 이보다 어두운 실루엣)
-export const FOG_DENSITY = .0023;
+export const FOG_COLOR = 0x19292d;   // 먼 곳이 녹아드는 청회색 안개 (가까운 구조물은 이보다 어두운 실루엣)
+export const FOG_DENSITY = .0032;

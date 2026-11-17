@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Voidrail</title>
+<title>Voidrail · 하역장 디자인</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#0a0d12;color:#e8e6e0;font-family:"Trebuchet MS",ui-rounded,system-ui,sans-serif}
   canvas{display:block;touch-action:none}
@@ -65,11 +65,13 @@
   <p class="tip">같은 방 코드로 들어온 사람끼리 기차를 함께 탑니다. 방 코드가 곧 암호예요. 열차 위치와 도시는 기관사(🚂) 기준으로 맞춰집니다.</p>
 </div>
 <div id="ui">
+  <div class="stat" id="directorStatus" aria-live="polite"></div>
+  <div class="row"><span class="stat">개발용 목표 시험</span><button id="bManifest">명세서 확보 완료</button><button id="bPower">전력 복구 완료</button><button id="bEvent">예약 공간 입구로</button><button id="bEventEnd">이벤트 통과 시험</button></div>
   <div class="row">
     <span class="stat" id="sBiome">-</span><span class="stat" id="sDist">-</span><span class="stat" id="sSpeed">-</span>
   </div>
   <div class="row">
-    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bHome">처음으로 ⏮</button><button id="bNext">다음 층 ⏭</button><button id="bSeed">새 시드</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
+    <button id="bMP">👥 같이 타기</button><button id="bView">시점: 1인칭 (V)</button><button id="bHome">처음으로 ⏮</button><button id="bNext">다음 구간 ⏭</button><button id="bSeed">새 시드</button><button id="bQual">품질</button><button id="bMute">🔊 소리 켜짐 (M)</button>
   </div>
 </div>
 <div id="fade" class="on">…</div>

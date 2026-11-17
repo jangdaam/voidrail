@@ -48,6 +48,10 @@ export function initUI(handlers) {
   addEventListener('pointerdown', prime, { capture: true }); addEventListener('keydown', prime, { capture: true });
   $('go').onclick = () => { prime(); tryLock(); updateResume(); };     // (테스트 호환)
   $('bView').onclick = () => setView(S.viewMode === 'fp' ? 'ext' : 'fp');
+  $('bManifest').onclick = () => H.completeGoal('manifest');
+  $('bPower').onclick = () => H.completeGoal('power');
+  $('bEvent').onclick = () => H.jumpToEvent();
+  $('bEventEnd').onclick = () => H.jumpPastEvent();
   $('bNext').onclick = () => H.nextRegion();
   $('bHome').onclick = () => H.restart();
   $('bSeed').onclick = () => H.newSeed();
@@ -90,6 +94,7 @@ export function showError(msg) { const el = $('err'); el.innerHTML = msg; el.sty
 /* 자동 품질: 3초 평균 FPS가 낮으면 한 단계씩 낮춤 */
 let autoQuality = location.hash !== '#test', fpsAcc = 0, fpsN = 0, fpsT = 0, lastFps = 60;
 function perf(dt) {
+  if(document.hidden || S.loading) { fpsAcc=fpsN=fpsT=0; return; }
   fpsAcc += dt; fpsN++; fpsT += dt;
   if (fpsT < 3) return;
   lastFps = fpsN / fpsAcc; fpsAcc = fpsN = fpsT = 0;
@@ -106,6 +111,7 @@ export function updateHUD(dt) {
   $('cross').classList.toggle('target', !!ptxt);   // 평소 화면: 글자 대신 조준점이 고리로
   $('cross').style.display = S.viewMode === 'fp' && S.started ? 'block' : 'none';
   if (!S.debug) return;
+  $('directorStatus').textContent = H.directorStatus();
   $('sBiome').textContent = S.region;
   $('sDist').textContent = '거리 · ' + (S.sTrain / 1000).toFixed(2) + ' km';
   $('sSpeed').textContent = '속도 · ' + Math.round(S.speed * 3.6) + ' km/h' + (S.targetSpeed === 0 ? ' (정지 중)' : '');

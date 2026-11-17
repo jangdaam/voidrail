@@ -27,6 +27,13 @@ export function merged(list) {
 /* 재질: 조명 계산이 가벼운 Lambert (어두운 지하에서는 차이가 거의 없고 내장 그래픽에 유리) */
 export const landMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 export const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true });      // 스스로 빛나는 면 (작업등, 창)
+// Height-weighted distance fog: dense below the track, readable working space nearby.
+export const atmosphere = { datum: { value: 0 } };
+for(const mat of [landMat,glowMat]) mat.onBeforeCompile = shader => {
+  shader.uniforms.fogDatum=atmosphere.datum;
+  shader.vertexShader=shader.vertexShader.replace('#include <common>', '#include <common>\nvarying float vAtmosphereY;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvec4 fogWorld = vec4(transformed,1.);\n#ifdef USE_INSTANCING\nfogWorld=instanceMatrix*fogWorld;\n#endif\nvAtmosphereY=(modelMatrix*fogWorld).y;');
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vAtmosphereY; uniform float fogDatum;').replace('#include <fog_fragment>', '#ifdef USE_FOG\nfloat hf=exp(clamp((fogDatum-vAtmosphereY)/180.,-.35,1.2));\nfloat ff=1.-exp(-fogDensity*fogDensity*vFogDepth*vFogDepth*hf);\ngl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,ff);\n#endif');
+};
 export const glassMat = new THREE.MeshBasicMaterial({ color: 0xcfe0f0, transparent: true, opacity: .08, depthWrite: false, side: THREE.DoubleSide });
 export const woodMat = new THREE.MeshLambertMaterial({ color: 0x3a2f28, flatShading: true });
 export const steelMat = new THREE.MeshLambertMaterial({ color: 0x70757c, flatShading: true });
@@ -57,6 +64,25 @@ export class Mesher {
       P.push(O.x + T.x * a + U.x * b + R.x * c, O.y + T.y * a + U.y * b + R.y * c, O.z + T.z * a + U.z * b + R.z * c); Cc.push(col.r, col.g, col.b);
     }
     return this;
+  }
+  // Continuous inclined belt/guard geometry, preserving the sector transform.
+  rampBox(x,y,z,sx,sy,sz,slope,col) {
+    const start = this.p.length;
+    for(let i=0;i<CUBE.length;i+=3) {
+      const dz=CUBE[i+2]*sz;
+      this.p.push(this.ox+x+CUBE[i]*sx,this.oy+y+CUBE[i+1]*sy+dz*slope,this.oz+(z+dz)*this.mz);
+      this.c.push(col.r,col.g,col.b);
+    }
+    this.fixBoxWinding(start);
+    return this;
+  }
+  // Inclined box vertices are reflected explicitly; reverse only these faces.
+  // Pipes construct a fresh orthogonal basis after mirroring and must not be reversed.
+  fixBoxWinding(start) {
+    if(this.mz>=0) return;
+    for(let i=start;i<this.p.length;i+=9) for(let a=0;a<3;a++) {
+      const t=this.p[i+3+a];this.p[i+3+a]=this.p[i+6+a];this.p[i+6+a]=t;
+    }
   }
   /** 두 점 사이 n각 배관 (옆면만) */
   pipe(ax, ay, az, bx, by, bz, rad, col, n = 8, raw = false) {

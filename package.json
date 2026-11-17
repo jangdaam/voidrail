@@ -1,19 +1,10 @@
 {
-  "name": "voidrail",
-  "version": "0.3.0",
+  "name": "voidrail-industrial-design",
   "private": true,
-  "description": "절차적으로 생성되는 허공 위를 달리는 기차 — 1인칭 협동 탐험 프로토타입",
   "type": "module",
   "scripts": {
-    "serve": "npx --yes http-server . -p 8000 -c-1",
-    "relay": "node tools/relay.mjs",
-    "vendor": "node tools/vendor.mjs"
-  },
-  "devDependencies": {
-    "@trystero-p2p/ws-relay": "0.27.0",
-    "esbuild": "^0.24.0",
-    "three": "0.160.0",
-    "trystero": "0.27.0",
-    "ws": "^8.18.0"
+    "build": "node build-preview.mjs",
+    "check": "node scripts/check-all.mjs",
+    "start": "node serve.mjs"
   }
 }

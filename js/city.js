@@ -5,9 +5,12 @@
 //     세부 배치(배관 수, 작업등, 문)는 시드에 따라 달라진다.
 //  2) 구역 세트(하역장): 방벽, 맞은편 작업층, 철교, 크레인, 화물판, 승강기 등 '한 공간'을 통째로.
 //     멀리서도 보여야 하므로 구역에 다가가기 전(앞 터널 안)에 여러 프레임에 나눠 미리 만든다.
-//     구도는 직접 설계한 것으로, 첫 구역은 시드와 무관하게 같다.
+//     일반 구역은 시드 기반으로 합성하고, 예약된 이벤트 구역만 직접 설계한 세트를 사용한다.
 // 모든 정적 구조물은 Mesher 로 재질별 메시 몇 개에 합친다(그리기 호출 최소화). 그림자·충돌 없음.
 import * as THREE from 'three';
+import { buildHarbor, animateHarbor } from './harbor.js';
+import {ordinaryHarborJobs,animateOrdinaryHarbor} from './ordinary-harbor.js';
+import {getRun} from './run-state.js';
 import { C, Mesher, landMat, glowMat, woodMat, steelMat } from './geo.js';
 import { trackPos, frameAt, makeFrame, sector, localZ, SECTOR, U } from './track.js';
 import { scene, camera, renderer } from './scene.js';
@@ -16,18 +19,18 @@ import { hash, mulberry, getSeed } from './noise.js';
 import { S } from './state.js';
 
 /* ---------- 색 ---------- */
-const STEELD = C('#14171b'), STEEL = C('#22262d'), STEELL = C('#363c45'), CONCD = C('#2b3037'), CONC = C('#434950'), CONCL = C('#5a6169'),
-  RUST = C('#553222'), RUSTL = C('#80492a'), HAZ = C('#6e5a1f');
+const STEELD = C('#14171b'), STEEL = C('#303a3d'), STEELL = C('#505c5c'), CONCD = C('#343c3d'), CONC = C('#434950'), CONCL = C('#5a6169'),
+  RUST = C('#553222'), RUSTL = C('#80492a'), HAZ = C('#8d7743');
 /* 조명은 희고 푸르게. 따뜻한 색(호박·적색)은 화물판 경고등처럼 몇 곳에만 */
-const WARM = C('#e6eef6'), WHITE = C('#a8c6ea'), AMBER = C('#ff9a30'), RED = C('#e04a30'), DIMWARM = C('#8fa3b8'), DIMWHITE = C('#587592');
+const WARM = C('#e2ccb0'), WHITE = C('#a8c6ea'), AMBER = C('#ff9a30'), RED = C('#e04a30'), DIMWARM = C('#8fa3b8'), DIMWHITE = C('#587592');
 
 /* ---------- 불빛 번짐(헤일로): 점 하나 = 불빛 하나. 수백 개도 그리기 호출 1번 ---------- */
 const haloMat = new THREE.ShaderMaterial({
   uniforms: { scale: { value: 600 } },
   vertexShader: `attribute float size; attribute vec3 col; varying vec3 vC; uniform float scale;
     void main(){ vec4 mv = modelViewMatrix*vec4(position,1.); float d = -mv.z;
-      gl_PointSize = clamp(size*scale/d*1.7, 3., 300.);
-      vC = col * exp(-d*.0011) * min(1., size*scale/d*.6 + .35);      // 멀수록 흐려지되 안개에 완전히 묻히지는 않음
+      gl_PointSize = clamp(size*scale/d*.6, 0., 55.);
+      vC = col * .32 * exp(-d*.0035) * min(1., size*scale/d*.6 + .35);      // 멀수록 흐려지되 안개에 완전히 묻히지는 않음
       gl_Position = projectionMatrix*mv; }`,
   fragmentShader: `varying vec3 vC; void main(){ float r = length(gl_PointCoord-.5)*2.; float a = smoothstep(1.,0.,r); gl_FragColor = vec4(vC*a*a*a, 1.); }`,
   blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false,
@@ -47,12 +50,18 @@ class Halos {
   }
 }
 /* 빛 웅덩이: 작업등이 벽·바닥에 떨어뜨린 빛을 덧셈 원판으로 흉내 (실제 광원 없이 넓은 면의 크기를 드러냄) */
-const poolMat = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, side: THREE.DoubleSide, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+const poolMat = new THREE.MeshBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, side: THREE.DoubleSide, fog: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+poolMat.onBeforeCompile = shader => {
+  shader.fragmentShader = shader.fragmentShader.replace('#include <fog_fragment>', `#ifdef USE_FOG
+    float attenuation = exp(-fogDensity * fogDensity * vFogDepth * vFogDepth);
+    gl_FragColor.rgb *= attenuation;
+  #endif`);
+};
 class Pools {
   constructor() { this.p = []; this.c = []; }
   /** 중심 c, 면을 이루는 두 축 u·v, 반지름 r */
   disc(cx, cy, cz, ux, uy, uz, vx, vy, vz, r, col, k) {
-    const N = 12, P = this.p, Cc = this.c;
+    const N = 24, P = this.p, Cc = this.c; k *= .36;
     for (let i = 0; i < N; i++) {
       const a = i / N * 6.2832, b = (i + 1) / N * 6.2832, ca = Math.cos(a) * r, sa = Math.sin(a) * r, cb = Math.cos(b) * r, sb = Math.sin(b) * r;
       P.push(cx, cy, cz, cx + ux * ca + vx * sa, cy + uy * ca + vy * sa, cz + uz * ca + vz * sa, cx + ux * cb + vx * sb, cy + uy * cb + vy * sb, cz + uz * cb + vz * sb);
@@ -77,7 +86,7 @@ function lightCone(h, r, col, k) {
 }
 
 /* ---------- 공용 ---------- */
-const sleeperGeo = new THREE.BoxGeometry(.45, .22, 3), railGeo = new THREE.BoxGeometry(STEP + .06, .16, .14), unitBox = new THREE.BoxGeometry(1, 1, 1);
+const sleeperGeo = new THREE.BoxGeometry(.24, .12, 1.9), railGeo = new THREE.BoxGeometry(STEP + .06, .16, .14), unitBox = new THREE.BoxGeometry(1, 1, 1);
 const SHARED = new Set([sleeperGeo, railGeo, unitBox]);
 const FR = makeFrame(), FR2 = makeFrame(), _P = new THREE.Vector3(), _Q = new THREE.Vector3(), _A = new THREE.Vector3(), _B = new THREE.Vector3(), _m = new THREE.Matrix4();
 const ID = { T: new THREE.Vector3(1, 0, 0), U: new THREE.Vector3(0, 1, 0), R: new THREE.Vector3(0, 0, 1) };
@@ -96,7 +105,7 @@ export function specAt(s) {
   const k = Math.floor(s / SECTOR);
   if (k < 0) return { k, u: s, tunnel: s >= U.gate, open: 0, m: 1 };
   const u = s - k * SECTOR, c = sector(k);
-  return { k, u, m: c.m, tunnel: u < U.bridge0 || u >= U.ramp1, open: u >= U.shaft0 && u < U.bridge0 ? c.m : u >= U.well0 && u < U.well1 ? -c.m : 0 };
+  return { k, u, m: c.m, tunnel: u < U.bridge0 || u >= U.ramp1, open: u >= U.shaft0 && u < U.bridge0 ? c.m : c.kind !== 'ordinary' && u >= U.well0 && u < U.well1 ? -c.m : 0 };
 }
 /** 구역의 정비 통로 꾸밈새 (시드로 결정): 배관 묶음, 작업등 간격, 보행로 쪽 */
 function tunnelStyle(k) {
@@ -114,7 +123,7 @@ function buildChunk(ci) {
   const rec = { ci, group, lamps };
   if (s0 + CH <= U.gate) return rec;
   // 레일·침목
-  const nS = Math.ceil(CH / STEP), sl = new THREE.InstancedMesh(sleeperGeo, woodMat, nS), rl = new THREE.InstancedMesh(railGeo, steelMat, nS * 2);
+  const nS = Math.ceil(CH / STEP), sl = new THREE.InstancedMesh(sleeperGeo, steelMat, nS), rl = new THREE.InstancedMesh(railGeo, steelMat, nS * 2);
   let n = 0;
   for (let i = 0; i < nS; i++) {
     const s = s0 + i * STEP; if (s < U.gate) continue;
@@ -127,6 +136,7 @@ function buildChunk(ci) {
 
   // 터널 마디
   const M = new Mesher(), G = new Mesher(), H = new Halos(), PL = new Pools();
+  for(let j=0;j<CH/SEG;j++){frameAt(s0+j*SEG+SEG/2,FR);trackPos(s0+j*SEG+SEG/2,_P); M.fbox(_P,FR,0,-.22,0,SEG+.2,.35,3.4,CONCD);for(const sd of [-1,1])M.fbox(_P,FR,0,.1,sd*2.9,SEG+.2,.38,.5,STEELD);}
   for (let j = 0; j < CH / SEG; j++) {
     const sa = s0 + j * SEG, sc = sa + SEG / 2, sp = specAt(sc); if (!sp.tunnel) continue;
     const gi = Math.round(sa / SEG), st = styleOf(sp.k), L = SEG + .5;
@@ -159,7 +169,7 @@ function buildChunk(ci) {
       }
     }
     // 작업등 (일부는 꺼져 있음)
-    if ((gi + st.lampPhase) % st.lampEvery === 0 && hash(gi, 51) > .22) {
+    if ((gi + st.lampPhase) % (st.lampEvery * 2) === 0 && hash(gi, 51) > .22) {
       const side = hash(gi, 52) < .5 ? -1 : 1, col = st.cold ? WHITE : WARM;
       if (sp.open !== side) {
         M.fbox(_P, FR, 0, 6.75, side * 5.25, .5, .16, .5, STEELD); G.fbox(_P, FR, 0, 6.58, side * 5.25, .34, .2, .34, col);
@@ -169,10 +179,22 @@ function buildChunk(ci) {
       }
     }
     // 정비문 (사람 크기)
-    if (hash(gi, 41) < .16 && sp.open !== w) {
+    if (hash(gi, 41) < .09 && sp.open !== w) {
       M.fbox(_P, FR, 1.2, 1.3, w * 5.55, 1.5, 2.4, .16, STEELD); M.fbox(_P, FR, 1.2, 1.28, w * 5.5, 1.1, 2.1, .16, STEEL);
       G.fbox(_P, FR, 1.2, 2.72, w * 5.5, .5, .14, .1, hash(gi, 42) < .3 ? RED : DIMWARM);
       M.fbox(_P, FR, 1.62, 1.25, w * 5.42, .05, .3, .05, STEELL);          // 손잡이
+    }
+
+    // Wall-mounted CCTV: bracket, pivot, weather hood, recessed lens and a single status light.
+    if(gi % 17 === 5 && sp.open !== st.walk){
+      const sd=st.walk;
+      M.fbox(_P,FR,1,4.2,sd*5.2,.22,.45,1.1,STEEL);
+      M.fbox(_P,FR,1,4.35,sd*4.7,.25,.45,.25,STEELL);
+      M.fbox(_P,FR,1.2,4.65,sd*4.7,1.15,.48,.46,CONCL);
+      M.fbox(_P,FR,1.25,4.94,sd*4.7,1.45,.08,.59,STEELL);
+      M.fbox(_P,FR,1.79,4.65,sd*4.7,.04,.32,.33,STEELD);
+      M.fbox(_P,FR,1.82,4.65,sd*4.7,.025,.15,.15,C('#214047'));
+      G.fbox(_P,FR,1.83,4.53,sd*4.7+.1,.02,.035,.035,RED);
     }
     // 가끔 벽 사다리·배전함
     if (hash(gi, 43) < .1 && sp.open !== -w) { M.fbox(_P, FR, -2, 3.2, -w * 5.5, .9, 1.4, .3, RUST); G.fbox(_P, FR, -2.25, 3.6, -w * 5.33, .08, .08, .04, AMBER); }
@@ -198,6 +220,7 @@ const X0 = U.shaft0, X1 = U.ramp1;
 const CRANE = { x: 560, zA: ZN + 70, zB: ZN + 230, y: 96, cargoZ: ZN + 142, lo: -82, hi: 52 };
 
 function sectorJobs(rec) {
+  if (rec.c.kind === 'ordinary') return ordinaryHarborJobs(rec.c,g=>{rec.ordinary=g;rec.group.add(g);rec.lamps.push(...g.userData.lamps);});
   const c = rec.c, k = c.k, ox = k * SECTOR, ZF = ZN + c.width, R = mulberry(977 + k * 131 + (k ? getSeed() : 0));
   const mk = () => [new Mesher(ox, c.y0, c.z0, c.m), new Mesher(ox, c.y0, c.z0, c.m), new Halos(ox, c.y0, c.z0, c.m)];
   const done = (M, G, H) => addBuilt(rec.group, M.build(), G.build(glowMat), H.build());
@@ -208,45 +231,77 @@ function sectorJobs(rec) {
   const washX = (x, y, z, r, col, k) => { W(x, y, z, _Q); PL.disc(_Q.x, _Q.y, _Q.z, 0, 0, 1, 0, 1, 0, r, col, k); };    // 끝 벽(x 평면)
   const zt0 = localZ(X0), zt1 = localZ(X1);
   const jobs = [];
+  jobs.push(() => { rec.harbor=buildHarbor(c); rec.group.add(rec.harbor); });
 
   /* 방벽: 위아래 끝이 보이지 않는 벽 */
   jobs.push(() => {
-    const [M, G, H] = mk(), Y0 = -430, Y1 = 500;
+    const [M, G, H] = mk(), Y0 = -1600, Y1 = 1800;
     M.span(X0 - 12, X1 + 12, Y0, Y1, ZN - 10, ZN, CONCD); M.span(X0 - 12, X1 + 12, Y0, Y1, ZF, ZF + 10, CONCD);
     // 양 끝 벽 (터널이 뚫고 지나는 구멍)
     for (const [x, zt, y, hw] of [[X0 - 10, zt0, 0, 9.5], [X1, zt1, c.rise, 7.4]]) {
       M.span(x, x + 10, Y0, y - 1.4, ZN, ZF, CONCD); M.span(x, x + 10, y + 8.8, Y1, ZN, ZF, CONCD);
       M.span(x, x + 10, y - 1.4, y + 8.8, ZN, zt - hw, CONCD); M.span(x, x + 10, y - 1.4, y + 8.8, zt + hw, ZF, CONCD);
     }
-    // 방벽의 버팀기둥과 수평 띠 → 크기를 재는 눈금
-    for (let x = X0 + 30; x < X1; x += 55) M.box(x, 35, ZN + 1.6, 6, 930, 3.2, CONC);
-    for (let y = -400; y < 480; y += 44) M.span(X0, X1, y, y + 2.6, ZN, ZN + 1.3, CONC);
-    for (const x of [X0, X1]) for (let y = -390; y < 480; y += 66) M.span(x - (x === X0 ? 0 : 1.2), x + (x === X0 ? 1.2 : 0), y, y + 3, ZN, ZF, CONC);
-    // 입구 표지: 호박색 틀 (위에서 돌아볼 때 '저기서 나왔다'를 알아보는 기준)
-    for (const dz of [-7.2, 7.2]) { G.box(X0 + .4, 3.6, zt0 + dz, .3, 7.6, .3, WARM); H.add(X0 + .6, 6.5, zt0 + dz, 6, WARM); }
-    G.box(X0 + .4, 8.9, zt0, .3, .3, 14.6, WARM); washX(X0 + .25, 5, zt0, 24, WARM, .2); washX(X1 - .25, c.rise + 5, zt1, 18, WHITE, .12);
-    for (let x = X0 + 58; x < X1; x += 110) { const y = 60 + R() * 120; wash(x, y, ZN + 1.4, 40 + R() * 16, WHITE, .05); G.box(x, y + 26, ZN + 3.4, .8, .5, .8, WHITE); H.add(x, y + 26, ZN + 4, 7, WHITE, .8); }
-    for (const dz of [-6.4, 6.4]) { G.box(X1 - .4, c.rise + 3.6, zt1 + dz, .3, 7.6, .3, WHITE); H.add(X1 - .6, c.rise + 6.5, zt1 + dz, 4, WHITE); }
+
+    // Massive retaining walls have sparse load-bearing buttresses and recessed service seams.
+    for (const x of [160, 395, 690, 925]) {
+      M.box(x, 0, ZN + 5, 13, 2700, 10, CONCD);
+      M.box(x + 9, 80, ZN + .3, 1.5, 620, .6, STEELD);
+    }
+    for (const y of [-165, 68, 240]) M.span(X0, X1, y, y + 7, ZN, ZN + 3.6, CONCD);
+    for (const x of [215, 520, 810]) {
+      M.box(x, 95, ZN + .1, 34, 190, .3, STEELD);
+      M.box(x + 20, 25, ZN + 2, 3, 65, 4, CONC);
+    }
+    G.box(X0 + .4, 8.9, zt0, .3, .14, 6, DIMWARM);
+    washX(X0 + .25, 5, zt0, 12, WARM, .06);
+    G.box(X1 - .4, c.rise + 8.3, zt1, .3, .14, 5, DIMWARM);
+    // Overlapping transfer floors conceal the upper termination without a flat ceiling.
+    for (const [x,y,w] of [[240,180,110],[670,285,190],[420,420,140]]) {
+      M.box(x,y,ZN+c.width*.55,w,12,c.width*.9,STEELD);
+      M.box(x-w*.42,y-22,ZN+c.width*.55,8,44,c.width*.9,CONCD);
+      M.pipe(x, y-16, ZN, x, y-16, ZF, 7, STEEL, 14);
+    }
+
     done(M, G, H);
   });
 
-  /* 맞은편 작업층: 층층이 쌓인 난간과 불 켜진 문 */
+
+  /* Process wall: loading portals, pump houses, service towers and grouped access platforms. */
   jobs.push(() => {
-    const [M, G, H] = mk();
-    for (let y = -220, lv = 0; y <= 290; y += 22, lv++) {
-      M.span(X0, X1, y - .7, y, ZF - 9, ZF, CONC);
-      M.span(X0, X1, y + 1.05, y + 1.15, ZF - 9.1, ZF - 9, STEELL);
-      for (let x = X0 + 15; x < X1; x += 30) M.box(x, y + 10.6, ZF - 8.4, 1.3, 21.3, 1.3, CONCD);
-      for (let x = X0 + 8; x < X1 - 8; x += 15) {
-        const h = R(); if (h > .2) continue;
-        const col = h < .03 ? WHITE : h < .17 ? DIMWARM : DIMWHITE;
-        G.box(x, y + 1.15, ZF - .05, 1.2, 2.2, .2, col);                   // 사람 크기의 문
-        if (h < .07) H.add(x, y + 1.6, ZF - .6, 3.2, col === WHITE ? WHITE : WARM, .7);
+    const [M,G,H] = mk();
+    for (const [x,y,w,h,d] of [[220,15,95,125,24],[480,-48,165,100,36],[780,78,110,155,30]]) {
+      M.box(x,y,ZF-d/2,w,h,d,CONCD);
+      M.box(x,y-h*.20,ZF-d-.15,w*.68,h*.35,.3,STEELD);
+      M.box(x,y-h*.20,ZF-d-.4,w*.60,h*.28,.3,C('#0a1013'));
+      for (const sd of [-1,1]) M.box(x+sd*w*.39,y,ZF-d-1.5,4,h+10,3,CONC);
+      for (const j of [-1,0,1]) M.box(x+j*w*.20,y+h*.3,ZF-d-1,8,9,2,STEELD);
+      M.box(x,y-h*.4,ZF-d-8,w+12,2,16,STEEL);
+      for(const sd of [-1,1]) {
+        const lx=x+sd*w*.24, ly=y-h*.03;
+        M.box(lx,ly+1,ZF-d-1,3.8,1.2,2,STEEL);
+        G.box(lx,ly,ZF-d-1.8,2.5,.2,1,DIMWARM);
+        H.add(lx,ly,ZF-d-2,3,WARM,.35);
+        wash(lx,ly-8,ZF-d-.5,18,WARM,.07);
+      }
+      for(let j=0;j<6;j++) M.box(x-w*.3+j*w*.12,y-h*.4+1.8,ZF-d-15,.18,3.2,.18,STEELL);
+      M.box(x,y-h*.4+3.4,ZF-d-15,w*.66,.15,.15,STEELL);
+    }
+    for (const x of [325,650,900]) {
+      const z=ZF-12;
+      M.box(x,0,z,18,1000,22,STEELD);
+      for (let y=-180;y<260;y+=75) {
+        M.box(x,y,z-16,28,2,25,STEEL);
+        M.box(x+5,y+4,z-28,9,7,1,STEELD);
       }
     }
-    for (let i = 0; i < 10; i++) { const x = X0 + 40 + R() * (X1 - X0 - 80), y = -150 + R() * 330, r = 28 + R() * 22, warm = R() < .35; wash(x, y, ZF - .2, r * 1.3, warm ? WARM : WHITE, .05); G.box(x, y + r * .7, ZF - 2, .9, .6, .9, warm ? WARM : WHITE); H.add(x, y + r * .7, ZF - 2.6, 8, warm ? WARM : WHITE, .8); }
-    done(M, G, H);
+    for(const [x,r] of [[580,5],[604,3],[620,2]]) {
+      M.pipe(x,-480,ZF-15,x,850,ZF-15,r,STEEL,16);
+      for(let y=-150;y<300;y+=80) M.pipe(x,y,ZF-15,x,y+2,ZF-15,r+.45,STEELL,16);
+    }
+    done(M,G,H);
   });
+
 
   /* 열차 쪽 방벽: 캣워크·정비문·사다리, 객차보다 굵은 배관과 큰 밸브 */
   jobs.push(() => {
@@ -260,8 +315,8 @@ function sectorJobs(rec) {
       for (let x = X0 + 20; x < xe - 10; x += 34) {
         const h = R();
         M.box(x, y + 1.1, ZN + .05, 1.3, 2.2, .3, STEELD);                                        // 정비문
-        if (h < .6) G.box(x, y + 2.45, ZN + .2, .5, .14, .1, h < .12 ? RED : DIMWARM);
-        if (h < .28) { G.box(x + 3, y + 2.3, ZN + .25, .3, .2, .3, WARM); H.add(x + 3, y + 2.2, ZN + .6, 3.4, WARM, .75); wash(x + 3, y + .6, ZN + .12, 6.5, WARM, .22); if (y === 10) lamp(x + 3, y + 1.8, ZN + 2.5, WARM); }
+        if (h < .10) G.box(x, y + 2.45, ZN + .2, .5, .14, .1, h < .12 ? RED : DIMWARM);
+        if (h < .08) { G.box(x + 3, y + 2.3, ZN + .25, .3, .2, .3, WARM); H.add(x + 3, y + 2.2, ZN + .6, 3.4, WARM, .75); wash(x + 3, y + .6, ZN + .12, 6.5, WARM, .22); if (y === 10) lamp(x + 3, y + 1.8, ZN + 2.5, WARM); }
         if (h > .72) { M.box(x + 6, y + 11, ZN + .5, .08, 22, .08, STEELL); M.box(x + 6.6, y + 11, ZN + .5, .08, 22, .08, STEELL); for (let q = 0; q < 22; q += 1.1) M.box(x + 6.3, y + q, ZN + .5, .6, .05, .05, STEELL); }   // 사다리
       }
     }
@@ -299,7 +354,7 @@ function sectorJobs(rec) {
         }
         if (bridge) M.fbox(_P, FR, -SEG / 2, -7.2, 0, .5, .5, 6.6, STEELD);
         // 난간등: 철교는 따뜻한 불빛이 촘촘히, 고가는 차가운 불빛이 드문드문 → 위에서 내려다볼 때 구분됨
-        if (gi % (bridge ? 3 : 6) === 0) {
+        if (gi % (bridge ? 12 : 18) === 0) {
           const sd = -c.m, col = bridge ? WARM : WHITE;
           M.fbox(_P, FR, 0, 1.9, sd * 3.68, .1, 2.9, .1, STEELL); G.fbox(_P, FR, 0, 3.3, sd * 3.5, .28, .18, .5, col);
           _Q.copy(_P).addScaledVector(FR.U, 3.25).addScaledVector(FR.R, sd * 3.4); H.raw(_Q, bridge ? 4.2 : 3.4, col, .85);
@@ -322,31 +377,60 @@ function sectorJobs(rec) {
       M.span(x - 4, x + 4, y - 1, y, ZN, ZF, STEEL);
       for (const dx of [-4.2, 4.2]) { M.span(x + dx - .25, x + dx + .25, y + 5, y + 5.6, ZN, ZF, STEELD); M.span(x + dx - .2, x + dx + .2, y, y + 1.1, ZN, ZF, STEELD); }
       for (let z = ZN + 6; z < ZF; z += 12) { for (const dx of [-4.2, 4.2]) M.box(x + dx, y + 2.8, z, .35, 5.2, .35, STEELD); M.box(x, y + 5.3, z, 8.4, .3, .3, STEELD); }
-      for (let z = ZN + 18; z < ZF; z += 36) { G.box(x, y + 4.8, z, .4, .2, .4, col); H.add(x, y + 4.6, z, 3.4, col, .8); }
+      for (let z = ZN + 45; z < ZF; z += 110) { G.box(x, y + 4.8, z, .4, .2, .4, col); H.add(x, y + 4.6, z, 3.4, col, .8); }
     }
     // 저장 탱크 (중간 거리의 큰 덩어리)
     const tz = ZF - 46, ty = -38;
     M.span(390, 560, ty - 3, ty, tz - 30, ZF, CONC);
     for (let x = 400; x <= 550; x += 50) { M.box(x, ty - 30, tz - 24, 3, 56, 3, CONCD); M.pipe(x, ty - 3, tz - 24, x, ty - 40, ZF - 2, 1.4, STEELD, 4); }
     for (const [x, r, h, col] of [[425, 17, 66, STEEL], [475, 14, 52, RUST], [522, 17, 72, STEEL]]) {
-      M.pipe(x, ty, tz, x, ty + h, tz, r, col, 12);
+      M.pipe(x, ty, tz, x, ty + h, tz, r, col, 24);
       M.box(x, ty + h + .5, tz, r * 1.85, 1, r * 1.85, STEELL); M.box(x, ty + h + .5, tz, r * 1.85, 1, r * 1.85, STEELL, .785);
       M.pipe(x, ty + h, tz, x, ty + h + 9, tz, 2.2, STEELD, 6);
-      for (let y = ty + 12; y < ty + h; y += 16) M.pipe(x, y, tz, x, y + 1, tz, r + .5, STEELL, 12);
+      for (let y = ty + 12; y < ty + h; y += 16) M.pipe(x, y, tz, x, y + 1, tz, r + .5, STEELL, 24);
       G.box(x, ty + h + 9.6, tz, .6, .6, .6, RED); H.add(x, ty + h + 9.8, tz, 6, RED, .9);
       M.box(x - r - .8, ty + h / 2, tz, .12, h, .7, STEELL);                                       // 탱크 사다리
     }
-    // 컨베이어: 맞은편 벽의 하역구에서 내려오는 긴 경사 다리
-    const cx = 700;
-    M.pipe(cx, 24, ZF - 4, cx, -14, ZN + 150, 3.2, STEEL, 4); M.box(cx, -17, ZN + 146, 16, 12, 16, STEELD);
-    for (let z = ZN + 170; z < ZF - 10; z += 34) { const y = -14 + (z - ZN - 150) / (c.width - 154) * 38; M.box(cx - 3, y - 215, z, 1.2, 426, 1.2, STEELD); M.box(cx + 3, y - 215, z, 1.2, 426, 1.2, STEELD); M.box(cx, y - 6, z, 7, .8, .8, STEELD); }
-    G.box(cx, 26, ZF - .3, 9, 6, .4, DIMWARM); H.add(cx, 27, ZF - 2, 9, WARM, .6);
-    for (let z = ZN + 170; z < ZF - 10; z += 68) { const y = -10 + (z - ZN - 150) / (c.width - 154) * 38; G.box(cx + 3.4, y, z, .3, .3, .3, WHITE); H.add(cx + 3.6, y, z, 2.8, WHITE, .7); }
+
+    // A belt is a broad dark deck, twin side rails, rollers, a drive motor and a discharge hopper.
+    const cx = 700, za = ZN+120, zb = ZF-32, ya=-10, yb=22;
+    const slope=(yb-ya)/(zb-za);
+    M.rampBox(cx,(ya+yb)/2,(za+zb)/2,10,.7,zb-za,slope,C('#182123'));
+    for(const sd of [-1,1]) M.rampBox(cx+sd*5.8,(ya+yb)/2+.7,(za+zb)/2,.6,2,zb-za,slope,HAZ);
+    M.box(cx,-69,(za+zb)/2,18,2,zb-za+20,CONCD);
+    for(let z=za;z<zb;z+=70) M.box(cx,-310,z,5,480,5,CONCD);
+    for(let z=za;z<zb;z+=5) {
+      const y=ya+(z-za)*slope;
+
+      M.pipe(cx-5.5,y-.6,z,cx+5.5,y-.6,z,.6,STEELL,12);
+
+      if(Math.round((z-za)/5)%7===0) {
+        for(const sd of [-1,1]) M.box(cx+sd*6,(y-68)/2,z,1,y+68,1,STEEL);
+        M.box(cx,y-2,z,14,1.5,3,STEEL);
+      }
+    }
+    for(const z of [za,zb]) {
+      const y=ya+(z-za)*slope;
+      M.pipe(cx-5,y,z,cx+5,y,z,2,STEELL,20);
+      M.pipe(cx+6,y,z,cx+11,y,z,1.4,STEEL,16);
+      for(let x=cx+6;x<cx+10;x+=.7) M.pipe(x,y,z,x+.2,y,z,1.65,STEELL,12);
+    }
+    M.box(cx,ya-6,za-4,15,10,11,STEELD);
+    M.box(cx,ya,za-4,17,1,13,HAZ);
+    M.box(cx,ya-16,za-4,6,12,6,STEEL);
+    for(const [z,sd] of [[za+18,-1],[zb-18,1]]) {
+      const y=ya+(z-za)*slope;
+      M.box(cx+sd*8,y+5,z,.35,10,.35,STEEL);
+      M.box(cx+sd*7,y+10,z,3,.7,1,STEELD);
+      G.box(cx+sd*7,y+9.6,z,2,.12,.7,DIMWARM);
+    }
+    // Moving freight is instanced by harbor.js.
+
     // 천장에서 늘어진 사슬과 갈고리 (선로 위는 피함)
     for (let i = 0; i < 16; i++) {
       const x = X0 + 40 + R() * (X1 - X0 - 80), z = ZN + 105 + R() * (c.width - 150), len = 150 + R() * 260, yb = 470 - len;
       if (Math.abs(x - CRANE.x) < 40 || Math.abs(x - 760) < 30) continue;
-      M.box(x, 470 - len / 2, z, .55, len, .55, STEELD);
+      M.box(x, 900 - len / 2, z, .55, len+860, .55, STEELD);
       if (R() < .6) { M.box(x, yb - 2.5, z, 3.4, 5, 2.2, STEEL); M.box(x, yb - 6.5, z, .8, 3, .8, STEELD); M.box(x + 1.2, yb - 8, z, 3.2, .8, .8, STEELD); }
     }
     done(M, G, H);
@@ -363,6 +447,14 @@ function sectorJobs(rec) {
     M.span(K.x - 6, K.x - 3, K.y + 3, K.y + 10, K.zA - 5, K.zB + 5, HAZ); M.span(K.x + 3, K.x + 6, K.y + 3, K.y + 10, K.zA - 5, K.zB + 5, HAZ);
     for (let z = K.zA; z <= K.zB; z += 16) M.span(K.x - 6, K.x + 6, K.y + 9.4, K.y + 10, z - .4, z + .4, STEELD);
     for (const z of [K.zA, K.zB]) { M.box(K.x, K.y + 4.5, z, 22, 5, 6, STEELD); G.box(K.x - 11.2, K.y + 5, z, .4, .5, .5, RED); G.box(K.x + 11.2, K.y + 5, z, .4, .5, .5, RED); H.add(K.x - 11.6, K.y + 5, z, 5, RED, .8); H.add(K.x + 11.6, K.y + 5, z, 5, RED, .8); }
+
+    // Triangulated girder webs and the hoist drum make the crane's load path readable.
+    for(let z=K.zA;z<K.zB;z+=16)for(const dx of [-5,5]){
+      M.pipe(K.x+dx,K.y+3,z,K.x+dx,K.y+9,z+16,.45,STEELL,6);
+      M.pipe(K.x+dx,K.y+9,z,K.x+dx,K.y+3,z+16,.45,STEELL,6);
+    }
+    M.pipe(K.x-10,K.y+12,K.cargoZ,K.x+10,K.y+12,K.cargoZ,3.5,STEELL,24);
+    for(let x=K.x-8;x<K.x+9;x+=1)M.pipe(x,K.y+12,K.cargoZ,x+.25,K.y+12,K.cargoZ,3.65,STEELD,20);
     // 횡행대차 (권상기)
     M.box(K.x, K.y + 5, K.cargoZ, 18, 7, 26, STEEL); M.box(K.x, K.y + 10.5, K.cargoZ, 10, 4, 12, STEELD);
     for (const [dx, dz] of [[-8, -11], [8, -11], [-8, 11], [8, 11]]) { M.pipe(K.x + dx, K.y + 1.5, K.cargoZ + dz - 1.5, K.x + dx, K.y + 1.5, K.cargoZ + dz + 1.5, 1.6, STEELD, 8); G.box(K.x + dx, K.y + .9, K.cargoZ + dz * .6, .9, .3, .9, WARM); H.add(K.x + dx, K.y + .5, K.cargoZ + dz * .6, 8, WARM, .9); }
@@ -370,9 +462,9 @@ function sectorJobs(rec) {
     M.box(K.x + 12, K.y - 1.5, K.cargoZ - 20, 4, 3.4, 4, STEEL); G.box(K.x + 12, K.y - 1.2, K.cargoZ - 22.05, 3, 1.2, .1, DIMWARM); M.box(K.x + 12, K.y + 1, K.cargoZ - 20, .3, 3, .3, STEELD);
     // 승강기 탑 (격자 기둥)
     const ex = 760, ez = ZF - 36;
-    for (const [dx, dz] of [[-8, -8], [8, -8], [-8, 8], [8, 8]]) M.box(ex + dx, 35, ez + dz, 1.6, 930, 1.6, STEELD);
-    for (let y = -420; y < 490; y += 24) { M.box(ex, y, ez - 8, 16, .7, .7, STEELD); M.box(ex, y, ez + 8, 16, .7, .7, STEELD); M.box(ex - 8, y, ez, .7, .7, 16, STEELD); M.box(ex + 8, y, ez, .7, .7, 16, STEELD); M.pipe(ex - 8, y, ez - 8, ex + 8, y + 24, ez - 8, .3, STEELD, 4); }
-    for (let y = -196; y < 300; y += 44) { M.span(ex - 8, ex + 8, y - .6, y, ez + 8, ZF, STEEL); G.box(ex, y + 3.4, ez + 8.3, .5, .3, .3, AMBER); H.add(ex, y + 3.4, ez + 7.6, 3, AMBER, .6); }
+    for (const [dx, dz] of [[-8, -8], [8, -8], [-8, 8], [8, 8]]) M.box(ex + dx, 35, ez + dz, 1.6, 2800, 1.6, STEELD);
+    for (let y = -900; y < 1400; y += 40) { M.box(ex, y, ez - 8, 16, .7, .7, STEELD); M.box(ex, y, ez + 8, 16, .7, .7, STEELD); M.box(ex - 8, y, ez, .7, .7, 16, STEELD); M.box(ex + 8, y, ez, .7, .7, 16, STEELD); M.pipe(ex - 8, y, ez - 8, ex + 8, y + 24, ez - 8, .3, STEELD, 4); }
+    for (let y = -196; y < 300; y += 132) { M.span(ex - 8, ex + 8, y - .6, y, ez + 8, ZF, STEEL); G.box(ex, y + 3.4, ez + 8.3, .5, .3, .3, AMBER); H.add(ex, y + 3.4, ez + 7.6, 3, AMBER, .6); }
     done(M, G, H); addBuilt(rec.group, PL.build());
     buildMoving(rec, W);
   });
@@ -383,17 +475,17 @@ function sectorJobs(rec) {
     trackPos(ox + (U.well0 + U.well1) / 2, _P);
     const xa = _P.x - 62, xb = _P.x + 62, za = _P.z + sd * 6.9, zb = _P.z + sd * 104, zc = (za + zb) / 2, Y = _P.y, D = Math.abs(zb - za);
     const zbox = (x0, x1, y0, y1, z0, z1, col, MM = M) => MM.span(x0, x1, y0, y1, Math.min(z0, z1), Math.max(z0, z1), col);
-    zbox(xa - 8, xb + 8, Y - 430, Y + 520, zb, zb + sd * 8, CONCD); zbox(xa - 8, xa, Y - 430, Y + 520, za, zb, CONCD); zbox(xb, xb + 8, Y - 430, Y + 520, za, zb, CONCD);
-    zbox(xa, xb, Y - 430, Y - 1.3, za, za - sd * 3, CONCD); zbox(xa, xb, Y + 8.7, Y + 520, za, za - sd * 3, CONCD);                // 통로 위아래의 벽
+    zbox(xa - 8, xb + 8, Y - 1600, Y + 1800, zb, zb + sd * 8, CONCD); zbox(xa - 8, xa, Y - 430, Y + 520, za, zb, CONCD); zbox(xb, xb + 8, Y - 430, Y + 520, za, zb, CONCD);
+    zbox(xa, xb, Y - 430, Y - 1.3, za, za - sd * 3, CONCD); zbox(xa, xb, Y + 8.7, Y + 1800, za, za - sd * 3, CONCD);                // 통로 위아래의 벽
     zbox(xa, _P.x - 25, Y - 1.3, Y + 8.7, za, za - sd * 3, CONCD); zbox(_P.x + 25, xb, Y - 1.3, Y + 8.7, za, za - sd * 3, CONCD);
-    for (let y = Y - 396; y < Y + 500; y += 22) {
+    for (let y = Y - 396; y < Y + 900; y += 66) {
       zbox(xa, xb, y - .7, y, zb, zb - sd * 7, CONC); zbox(xa, xb, y + 1.05, y + 1.15, zb - sd * 7, zb - sd * 7.1, STEELL);
       for (let x = xa + 10; x < xb; x += 20) M.box(x, y + 10.6, zb - sd * 6.4, 1.2, 21.3, 1.2, CONCD);
-      for (let x = xa + 6; x < xb; x += 12) { const h = R(); if (h > .3) continue; G.box(x, y + 1.15, zb - sd * .05, 1.2, 2.2, .2, h < .2 ? DIMWARM : DIMWHITE); if (h < .09) H.raw(_Q.set(x, y + 1.6, zb - sd * .7), 3, WARM, .7); }
+      for (let x = xa + 6; x < xb; x += 12) { const h = R(); if (h > .055) continue; G.box(x, y + 1.15, zb - sd * .05, 1.2, 2.2, .2, h < .2 ? DIMWARM : DIMWHITE); if (h < .09) H.raw(_Q.set(x, y + 1.6, zb - sd * .7), 3, WARM, .7); }
     }
     for (const dx of [-44, -36, 40]) M.pipe(_P.x + dx, Y - 430, zc + sd * 30, _P.x + dx, Y + 520, zc + sd * 30, dx > 0 ? 4.5 : 3, dx > 0 ? RUST : STEELL, 10);
     for (const [dx, dz] of [[-17, -15], [17, -15], [-17, 15], [17, 15]]) M.box(_P.x + dx, Y + 45, zc + dz, 1.5, 950, 1.5, STEELD);     // 승강대 가이드
-    for (let y = Y - 400; y < Y + 500; y += 30) { M.box(_P.x, y, zc - 15, 34, .6, .6, STEELD); M.box(_P.x, y, zc + 15, 34, .6, .6, STEELD); }
+    for (let y = Y - 400; y < Y + 900; y += 80) { M.box(_P.x, y, zc - 15, 34, .6, .6, STEELD); M.box(_P.x, y, zc + 15, 34, .6, .6, STEELD); }
     addBuilt(rec.group, M.build(), G.build(glowMat), H.build());
     // 움직이는 승강대
     const P = new Mesher(), PG = new Mesher(), PH = new Halos();
@@ -425,10 +517,17 @@ function buildMoving(rec, W) {
     const m = new THREE.Mesh(unitBox, chainMat);
     m.userData.at = [base.x + dx, base.z + dz]; rec.group.add(m); chains.push(m);
   }
-  const cone = lightCone(190, 34, WARM, .09); cone.position.set(base.x, c.y0 + K.y, base.z); rec.group.add(cone);
+  const cone = lightCone(115, 18, WARM, .005); cone.position.set(base.x, c.y0 + K.y, base.z); rec.group.add(cone);
   // 승강기 칸
   const E = new Mesher(), EG = new Mesher(), EH = new Halos();
-  E.box(0, 0, 0, 13, 8, 13, STEEL); E.box(0, 4.6, 0, 5, 1.6, 5, STEELD); EG.box(0, .6, -6.55, 10, 2, .1, WARM); EG.box(-6.55, .6, 0, .1, 2, 10, WARM); EG.box(6.55, .6, 0, .1, 2, 10, DIMWARM);
+
+  E.box(0,-4,0,15,1,15,STEEL);
+  E.box(0,4,0,15,.7,15,STEEL);
+  for(const dx of [-6.5,6.5])for(const dz of [-6.5,6.5])E.box(dx,0,dz,.6,8,.6,HAZ);
+  for(const y of [-2.8,-1.2])for(const dz of [-6.5,6.5])E.box(0,y,dz,13,.2,.2,STEELL);
+  E.box(0,-2,-3,7,3,4,RUST);
+  EG.box(0,3.6,-6.55,3,.12,.6,WARM);
+
   EH.add(0, .6, -7.4, 10, WARM, .8); EH.add(0, -4.6, 0, 6, RED, .8);
   const cab = new THREE.Group(); cab.add(E.build(), EG.build(glowMat), EH.build());
   W(760, 0, ZN + c.width - 36, cab.position); rec.group.add(cab);
@@ -444,6 +543,8 @@ export function animateWorld() {
   haloMat.uniforms.scale.value = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
   for (const rec of sectors.values()) {
     const d = rec.dyn, c = rec.c;
+    if(rec.harbor) animateHarbor(rec.harbor,t);
+    if(rec.ordinary) animateOrdinaryHarbor(rec.ordinary,t);
     if (d) {
       // 화물판: 천천히 움직이기 시작해 끝에서 다시 감속 (무게감). 72초 주기
       const ph = (t % 72) / 72, K = CRANE;
@@ -464,9 +565,10 @@ export function animateWorld() {
  * ===================================================================== */
 const chunks = new Map(), sectors = new Map(), queue = [];
 export const queueLength = () => queue.length;
-const BACK = 250, AHEAD = 430;
+const BACK = 390, AHEAD = 430;
 
 export function updateChunks(s) {
+  getRun().commitThrough(Math.max(0, Math.floor((s + AHEAD + CH) / SECTOR)));
   const c0 = Math.floor((s - BACK) / CH), c1 = Math.floor((s + AHEAD) / CH), here = Math.floor(s / CH);
   for (let ci = c0; ci <= c1; ci++) if (!chunks.has(ci)) { chunks.set(ci, null); queue.push({ ci, pri: Math.abs(ci - here) }); }
   for (const [ci, rec] of chunks) if (ci < c0 - 1 || ci > c1 + 1) { if (rec) dispose(rec.group); chunks.delete(ci); lampsDirty = true; }
@@ -510,6 +612,6 @@ export function updateLights(dt) {
   for (let i = 0; i < pool.length; i++) {
     const L = pool[i], src = i < n ? near[i] : null;
     if (!src) { L.intensity = 0; continue; }
-    L.position.copy(src.p); L.color.copy(src.c); L.intensity = 95;
+    L.position.copy(src.p); L.color.copy(src.c); L.intensity = src.intensity ?? 95; L.distance = src.distance ?? 34;
   }
 }

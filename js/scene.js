@@ -21,8 +21,8 @@ const skyMat = new THREE.ShaderMaterial({
     void main(){
       float h = abs(vP.y + .04);
       float d = smoothstep(.0, .75, h);
-      float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233)))*43758.5453);
-      vec3 col = mix(haze, haze*.12, d) + (n-.5)/255.*2.;
+      float n = .5;
+      vec3 col = mix(haze, haze*.65, d) + (n-.5)/255.*2.;
       gl_FragColor = vec4(col,1.);
       #include <colorspace_fragment>
     }`,
@@ -31,7 +31,7 @@ const skyMat = new THREE.ShaderMaterial({
 export const sky = new THREE.Mesh(new THREE.SphereGeometry(1500, 24, 12), skyMat); sky.renderOrder = -2; sky.frustumCulled = false; scene.add(sky);
 
 /* 기본 조명: 아주 약한 차가운 주변광 + 위에서 내려오는 희미한 빛(면의 방향이 읽히도록). 나머지는 작업등 */
-export const hemi = new THREE.HemisphereLight(0x8fa3b8, 0x14100e, .55); scene.add(hemi);
-export const fill = new THREE.DirectionalLight(0x9db4cc, .5); fill.position.set(.3, 1, .45); scene.add(fill);
+export const hemi = new THREE.HemisphereLight(0x8fa3b8, 0x14100e, .72); scene.add(hemi);
+export const fill = new THREE.DirectionalLight(0x9db4cc, .68); fill.position.set(.3, 1, .45); scene.add(fill);
 
 export function applyQuality(name) { renderer.setPixelRatio(Math.min(devicePixelRatio, QUALITY[name].pr)); }

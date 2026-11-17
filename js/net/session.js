@@ -5,6 +5,7 @@
 //  기관사  : ID 가 가장 작은 참가자(호스트)가 기차 위치·속도·시간·시드의 기준. 4Hz 로 방송, 나머지는 부드럽게 따라감.
 //  이벤트  : 레버(속도), 자원 줍기 → 신뢰 채널. 자원은 결정론적 ID 라 서로 다른 화면에서도 같은 물건을 가리킴.
 import * as THREE from 'three';
+import {RoomOrigin} from './room-origin.js';
 import { now, PeerClock } from './clock.js';
 import { encodeSnap, decodeSnap, seqNewer, FLAG_GROUND, FLAG_GRAV, FLAG_SPRINT, toolFlags, flagTool, flagLoaded } from './snapshot.js';
 import { RemoteMotion } from './interp.js';
@@ -28,9 +29,9 @@ export class Session {
     this._tp = new THREE.Vector3(); this._w = new THREE.Vector3();
   }
   async start(roomCode, name) {
-    this.name = name; this.room = roomCode;
+    this.stopped=false; this.name = name; this.room = roomCode; this.origin = new RoomOrigin('room-'+Math.random().toString(36).slice(2), now()); this.worldReady = true; this.retired=new Set();
     this.tr.on('join', id => this.onJoin(id));
-    this.tr.on('leave', id => this.dropRemote(id));
+    this.tr.on('leave', id => this.dropRemote(id,true));
     this.tr.on('fast', (id, buf) => this.onFast(id, buf));
     this.tr.on('rel', (id, type, d) => this.onRel(id, type, d));
     this.selfId = await this.tr.join(roomCode);
@@ -38,7 +39,7 @@ export class Session {
     this.h.log?.(`방 '${roomCode}' 에 들어왔어요`);
     return this.selfId;
   }
-  async stop() { await this.tr.leave(); for (const id of [...this.remotes.keys()]) this.dropRemote(id); this.connected = false; }
+  async stop() { this.stopped=true; this.connected=false; await this.tr.leave(); for (const id of [...this.remotes.keys()]) this.dropRemote(id); this.connected = false; }
 
   /* ---------- 참가자 ---------- */
   remote(id) {
@@ -54,16 +55,20 @@ export class Session {
     return r;
   }
   onJoin(id) {
+    if(this.stopped)return;
+    if(this.remotes.size===0)this.worldReady=false;
+    this.retired.delete(id);
     const r = this.remote(id);
-    this.tr.sendRel('hello', { name: this.name }, id);
-    for (let i = 0; i < 4; i++) setTimeout(() => this.sendPing(id), 150 * i);     // 시계 빠르게 맞추기
+    this.sendHello(id);
+    for (let i = 0; i < 4; i++) setTimeout(() => { if(!this.stopped && this.remotes.has(id)) this.sendPing(id); }, 150 * i);     // 시계 빠르게 맞추기
     if (this.isHost()) this.tr.sendRel('taken', this.h.takenList(), id);
     this.h.log?.('새 승객이 탑승했어요');
     return r;
   }
-  dropRemote(id) {
+  sendHello(id=null) { this.tr.sendRel('hello', {name:this.name,origin:this.origin.snapshot(now()),world:this.h.getTrain()}, id); }
+  dropRemote(id, retired=false) {
     const r = this.remotes.get(id); if (!r) return;
-    r.avatar.dispose(); this.remotes.delete(id);
+    if(retired)this.retired?.add(id); r.avatar.dispose(); this.remotes.delete(id);
     this.h.log?.(`${r.name} 님이 내렸어요`); this.h.onPeers?.(this.peerList());
   }
   peerList() { return [...this.remotes.values()].map(r => ({ id: r.id, name: r.name, rtt: r.clock.rtt, color: r.color, host: r.id === this.hostId() })); }
@@ -72,6 +77,7 @@ export class Session {
 
   /* ---------- 수신 ---------- */
   onFast(id, buf) {
+    if(this.stopped || this.retired?.has(id))return;
     const s = decodeSnap(buf); if (!s) return;
     const r = this.remotes.get(id) || this.onJoin(id);
     r.heard = now();
@@ -79,13 +85,23 @@ export class Session {
     r.motion.push(s, r.clock.toLocal(s.t), now());
   }
   onRel(id, type, d) {
+    if(this.stopped || this.retired?.has(id))return;
     const r = this.remotes.get(id) || this.onJoin(id);
     r.heard = now();
     switch (type) {
-      case 'hello': if (typeof d?.name === 'string') { r.name = d.name.slice(0, 16) || '승객'; r.avatar.setName(r.name); this.h.onPeers?.(this.peerList()); } break;
+      case 'hello':
+        if (d?.origin && d?.world) {
+          if (this.origin.offer(d.origin,now())) {
+            this.h.onWorldOffer?.(d.world);
+            // Announce adoption: a second newcomer may have heard our previous lobby state.
+            this.sendHello();
+          }
+          this.worldReady=true;
+        }
+        if (typeof d?.name === 'string') { r.hello = true; r.name = d.name.slice(0, 16) || '승객'; r.avatar.setName(r.name); this.h.onPeers?.(this.peerList()); } break;
       case 'ping': this.tr.sendRel('pong', { t0: d.t0, t1: now() }, id); break;
       case 'pong': r.clock.add(d.t0, d.t1, now()); if (r.pending) { r.motion.push(r.pending, r.clock.toLocal(r.pending.t), now()); r.pending = null; } break;
-      case 'train': if (id === this.hostId() && r.clock.ready) this.h.applyTrain(d, now() - r.clock.toLocal(d.t)); break;
+      case 'train': if (this.worldReady && this.origin.accepts(d?.origin) && id === this.hostId() && r.clock.ready) this.h.applyTrain(d, now() - r.clock.toLocal(d.t)); break;
       case 'ctrl': if (typeof d?.targetSpeed === 'number') this.h.onControl(d.targetSpeed, r.name); break;
       case 'pick': if (typeof d?.id === 'string') this.h.onPick(d.id, r.name); break;
       case 'taken': if (Array.isArray(d)) this.h.applyTaken(d); break;
@@ -117,7 +133,7 @@ export class Session {
     }
     // 기관사: 기차 상태 방송
     this.trainAcc += dt * 1000;
-    if (this.trainAcc >= TRAIN_MS) { this.trainAcc = 0; if (this.isHost() && this.remotes.size) this.tr.sendRel('train', { ...this.h.getTrain(), t }); }
+    if (this.trainAcc >= TRAIN_MS) { this.trainAcc = 0; if (this.worldReady && [...this.remotes.values()].every(r => r.hello) && this.isHost() && this.remotes.size) this.tr.sendRel('train', { ...this.h.getTrain(), origin:this.origin.snapshot(t), t }); }
     // 시계 재측정 (처음엔 자주, 이후 3초마다)
     this.pingAcc += dt * 1000;
     if (this.pingAcc > 1000) { this.pingAcc = 0; for (const r of this.remotes.values()) if (r.clock.samples.length < 8 || Math.random() < .34) this.sendPing(r.id); }
