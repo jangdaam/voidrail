@@ -73,8 +73,8 @@ class CarB {
     this.box(x0, x1, F - .3, F, -1.7, 1.7, FLOOR);
     this.box(x0 + .4, x1 - .4, F - .85, F - .3, -1.2, 1.2, DARK, { collide: false });
     // 연결 발판: 커브에서도 틈이 안 생기도록 넉넉히 겹침
-    if (plates.includes('front')) this.box(x1, x1 + .62, F - .14, F - .008, -.72, .72, DARK);   // 이웃 발판과 높이 엇갈림
-    if (plates.includes('rear')) this.box(x0 - .62, x0, F - .12, F, -.72, .72, DARK);
+    if (plates.includes('front')) this.box(x1, x1 + .62, F - .14, F - .008, -.72, .72, DARK, { visual: false });   // 충돌만. 보이는 발판은 연결 통로(JOINTS)
+    if (plates.includes('rear')) this.box(x0 - .62, x0, F - .12, F, -.72, .72, DARK, { visual: false });
   }
   sideWall(z, x0, x1, doors, col) {
     const t0 = z - .06, t1 = z + .06; let cur = x0; const segs = [];
@@ -366,7 +366,7 @@ export const CHIMNEY = new THREE.Vector3(-2.45, F + 1.6, -1.65);          // 발
  * 차량은 선로 곡선을 따라 따로 기울고 꺾이므로 끝과 끝 사이가 벌어졌다 좁아졌다 한다(그 움직임은 살림).
  * 매 프레임 두 차량의 끝점을 이어 발판·옆 난간을 늘였다 줄였다 하고, 플레이어 충돌에도 넣는다 → 틈으로 떨어지지 않음. */
 export const JOINTS = [];
-const jPlate = prep(new THREE.BoxGeometry(1, .1, 1.7), IRON_D, M(0, -.05, 0)), jRail = merged([
+const jPlate = merged([prep(new THREE.BoxGeometry(1, .08, 1.7), IRON_D, M(0, -.055, 0)), ...[-.6, -.2, .2, .6].map(z => prep(new THREE.BoxGeometry(1, .012, .05), DARK, M(0, -.009, z)))]), jRail = merged([
   ...[-1, 1].flatMap(s => [prep(new THREE.BoxGeometry(1, .06, .06), DARK, M(0, .97, s * .9)), prep(new THREE.BoxGeometry(1, .05, .05), DARK, M(0, .5, s * .9)),
     prep(new THREE.BoxGeometry(1, .9, .02), C('#24272b'), M(0, .5, s * .91))]),                    // 옆 가림막(주름막 느낌)
 ]);
@@ -385,7 +385,7 @@ function placeBellows() {
     _jy.set(0, 1, 0).applyQuaternion(j.a.g.quaternion).add(_jz.set(0, 1, 0).applyQuaternion(j.b.g.quaternion));
     _jz.crossVectors(_jx, _jy).normalize(); _jy.crossVectors(_jz, _jx).normalize();
     j.g.position.lerpVectors(_ja, _jb, .5); j.g.quaternion.setFromRotationMatrix(_jm.makeBasis(_jx, _jy, _jz));
-    j.plate.scale.x = L + .9; j.rail.scale.x = Math.max(.05, L - .02);
+    j.plate.scale.x = L + .02; j.rail.scale.x = Math.max(.05, L - .16);
     j.g.updateMatrixWorld(true); j.inv.copy(j.g.matrixWorld).invert();
     const h = L / 2; j.x0 = -h - .45; j.x1 = h + .45;
     j.boxes[0].min[0] = -h - .45; j.boxes[0].max[0] = h + .45;
