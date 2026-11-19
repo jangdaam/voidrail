@@ -118,7 +118,7 @@ const netSend = d => session?.sendEv(d);
 initPower({ toast, send: netSend });
 initLoot({ toast, sendPick: id => session?.sendPick(id) });
 initCombat({ toast, fade });
-initAndroids({ hurt, reward(pos) { S.scrap++; if (Math.random() < .25) S.parts++; sparkAt(pos, 10, 0xa8c6ea); } });
+initAndroids({ hurt, wheelImpact(pos) { sparkAt(pos, 16, 0xffc67a); }, reward(pos) { S.scrap++; if (Math.random() < .25) S.parts++; sparkAt(pos, 10, 0xa8c6ea); } });
 initDrones({ toast, spark: sparkAt, reward(pos) { S.scrap += 2; S.parts++; sparkAt(pos, 14, 0xffb070); } });
 // 운전차: 레버 3개
 addInteractable({ id: 'notch', car: driveCar, pos: LEVER_AT.notch, r: 1.7, prompt: () => `주행 ${S.notch}단 · E: 올리기 · Q: 내리기`, act: () => { applyOp('notch+'); }, alt: () => { applyOp('notch-'); } });
