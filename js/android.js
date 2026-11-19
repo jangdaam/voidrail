@@ -18,10 +18,11 @@
 import * as THREE from 'three';
 import { C, prep, M, merged } from './geo.js';
 import { scene, camera } from './scene.js';
-import { trackPos, frameAt, makeFrame } from './track.js';
+import { trackPos, frameAt, makeFrame, arcScale } from './track.js';
 import { anchorsIn, doorLeaves, specAt } from './city.js';
 import { trainToWorld, carForTrainX, cabinCar, powerCar, driveCar, ROOF_Y, GRIPS, gripPoint, JOINTS } from './train.js';
 import { ANDROID as CFG, F } from './config.js';
+import { makeStairRun, sampleRun, advanceRun, poseStairRun } from './stair-run.js';
 import { S } from './state.js';
 import * as A from './audio.js';
 
@@ -218,7 +219,22 @@ function stepRag(d, dt) {
       const [a, b] = BONES[k], pa = d.rp[a], pb = d.rp[b]; _rv.subVectors(pb, pa); const L = _rv.length() || 1e-4, diff = (L - d.rlen[k]) / L * .5;
       pa.addScaledVector(_rv, diff); pb.addScaledVector(_rv, -diff);
     }
-    for (let i = 0; i < 15; i++) collideRag(d.rp[i], d.rq[i]);
+    for (let i = 0; i < 15; i++) collideRag(d.rp[i], d.rq[i], d.wheelRisk);
+    if (d.wheelRisk && S.speed > 1) {
+      for (const car of [driveCar, powerCar, cabinCar]) {
+        // Wheels can catch a knee or shoulder before the pelvis reaches the rail.
+        const hit = [0, 2, 4, 7, 10, 13].find(j => {
+          _rl.copy(d.rp[j]).applyMatrix4(car.inv);
+          return Math.abs(_rl.x) < car.x1 + .7 && car.wheels.some(w =>
+            Math.abs(_rl.z - w.position.z) < .32 &&
+            Math.hypot(_rl.x - w.position.x, _rl.y - w.position.y) < .67);
+        });
+        if (hit === undefined) continue;
+        H.wheelImpact?.(d.rp[hit]); snd(d, 'scrape', 1.5); snd(d, 'land', 1.25);
+        d.wheelRisk = false; d.life = Math.min(d.life, d.st + .16);
+        break;
+      }
+    }
   }
   // 그리기 (월드 좌표 = 루트 좌표)
   const R = d.rp;
@@ -232,11 +248,12 @@ function stepRag(d, dt) {
   }
   if (d.st > d.life || d.rp[0].distanceTo(camera.position) > 160) { d.alive = false; d.g.visible = false; }
 }
-function collideRag(p, q) {
+function collideRag(p, q, underCar) {
   // 열차 지붕·동력차 바닥: 닿으면 열차와 같이 움직임
   for (const [car, ys, hz] of SURF()) {
     _rl.copy(p).applyMatrix4(car.inv);
     if (_rl.x < car.x0 || _rl.x > car.x1 || Math.abs(_rl.z) > hz || _rl.y > ys + .02 || _rl.y < ys - .5) continue;
+    if (underCar && _rt.copy(q).applyMatrix4(car.inv).y < ys) continue;
     _rl.y = ys + .02; p.copy(_rl.applyMatrix4(car.g.matrixWorld));
     _rv.subVectors(p, q); q.copy(p).sub(_rv.lerp(_vT, .35)); return;
   }
@@ -244,7 +261,10 @@ function collideRag(p, q) {
   _rl.copy(p).applyMatrix4(driveCar.inv); const s = S.sTrain + _rl.x;
   trackPos(s, _rt); frameAt(s, RFR); _rv.subVectors(p, _rt);
   const lat = _rv.dot(RFR.R), up = _rv.dot(RFR.U);
-  if (Math.abs(lat) < (specAt(s).tunnel ? 6 : 2.0) && up < .22 && up > -1.5) { p.addScaledVector(RFR.U, .22 - up); _rv.subVectors(p, q).multiplyScalar(.6); q.copy(p).sub(_rv); }
+  if (Math.abs(lat) < (specAt(s).tunnel ? 6 : 2.0) && up < .22 && up > -1.5) { p.addScaledVector(RFR.U, .22 - up);
+    _rv.subVectors(p, q).multiplyScalar(.6);
+    if (underCar) _rv.addScaledVector(RFR.U, -_rv.dot(RFR.U));
+    q.copy(p).sub(_rv); }
 }
 
 /* ================= 키 포즈 타임라인 =================
@@ -450,8 +470,8 @@ function setWorldPose(d, pos, up, fwd) { d.g.position.copy(pos); _x.crossVectors
 /** 선로 좌표 (s, 위 u, 옆 r) → 월드 */
 function wpos(s, u, r, out) { frameAt(s, FR); return trackPos(s, out).addScaledVector(FR.U, u).addScaledVector(FR.R, r); }
 const ACTIVE = { runner: 1, spider: 1, climber: 1, track: 1, stairs: 1 };            // 처음부터 움직이는 무리 (눈이 켜진 채)
-function spawnAt(d, a, idx = 0) {
-  d.rs = undefined;
+function spawnAt(d, a, idx = 0, count = a.n || 1) {
+  d.rs = undefined; d.stairs = null; d.wheelRisk = false;
   Object.assign(d, { alive: true, a: Object.assign({}, a), hp: CFG.hp, legHit: 0, kneel: 0, slipT: 0, decided: false, prepT: 0, go: false, t: 0, st: 0, flash: 0, heading: 0, level: 'floor', cool: 0, grip: 1, stagger: 0, gait: 0, freeze: 0, rT: 0,
     eyeOn: false, eyeT: 0, knockT: 0, side: a.side, phase: Math.random() * 9, swung: false, blendT: 0, sw: 0, swv: 0, roll: 0, rollTo: 0, trem: .004,
     limp: Math.random() < .5 ? 0 : 1, sprintCD: rnd(4, 9), gr: null, hold: 0, bangT: 0, plant: false, mode: '' });
@@ -465,17 +485,16 @@ function spawnAt(d, a, idx = 0) {
   else if (a.type === 'track') { d.rs = a.s + idx * 3; d.lat = (idx ? -1 : 1) * rnd(0, .4); d.state = 'trackrun'; }
   else if (a.type === 'spider') { d.rs = a.s + idx * 2; d.lat = a.r; d.state = 'spider'; }
   else if (a.type === 'gantry') { d.rs = a.s + (idx ? .3 : -.3); d.lat = a.r + (idx ? -.9 : .4); wpos(d.rs, 10.05, d.lat, _p); _f.copy(FR.T).multiplyScalar(-1); setWorldPose(d, _p, FR.U, _f); d.state = 'perch'; poseStand(d, .8); }
-  else if (a.type === 'stairs') {                                     // 계단 아래에서 줄지어 올라옴: 경로 [계단 밑 → 계단 위 → 층계참 끝]
-    if (a.bot) {                                                      // 일반 구역: 작업장 바닥(멀리 아래)에서 옆으로 뻗은 계단을 올라옴
-      const B = a.bot, lane = (idx % 3 - 1) * .9;
-      d.path = [[a.s + lane, B.u + .05, a.side * (B.lat + 1 + idx * 1.2)], [a.s + lane, B.u + .05, a.side * B.lat], [a.s + lane * .8, 0, a.side * B.top], [a.s + (idx - 2) * .8, -.1, a.side * 2.75]];
-    } else
-    d.path = [[a.s + 7.8 + idx * 1.1, -5.55, a.side * (3.6 + rnd(-.3, .3))], [a.s + 7.4, -5.55, a.side * 3.6], [a.s + 1.3, -.1, a.side * 3.6], [a.s + (idx - 2) * .75, -.1, a.side * 2.8]];
-    d.pi = 0; d.rs = d.path[0][0]; d.u = d.path[0][1]; d.lat = d.path[0][2]; d.wait = idx * .45; d.state = 'stairs';
-    d.plen = 0; for (let i = 1; i < d.path.length; i++) d.plen += Math.hypot(...d.path[i].map((v, j) => v - d.path[i - 1][j]));
-    // 계단이 길면 이미 중간까지 올라와 있는 채로 시작 (열차가 지나가기 전에 닿도록)
-    const avail = Math.max(0, (a.s - S.sTrain - 6) / Math.max(Math.abs(S.speed), 13) - d.wait) * 5.2;
-    d.done = 0; if (d.plen > avail) { d.done = d.plen - avail + idx * .8; advancePath(d, d.done); }
+  else if (a.type === 'stairs') {
+    const run = d.stairs = makeStairRun(a, idx, count);
+    // Pair arrivals so shoulders can touch; leave the last rank a clear jump.
+    const cars = [driveCar, powerCar, cabinCar];
+    d.targetX = -cars[Math.min(2, Math.floor(idx / 2))].off - (idx % 2) * .5;
+    run.mishap = count >= 3 && idx === 1 ? (a.gi % 2 ? 'short' : 'shove')
+      : count >= 5 && idx === 3 ? (a.gi % 2 ? 'shove' : 'short') : '';
+    d.state = 'stairs'; poseStand(d, .25);
+    _f.subVectors(run.points[1], run.points[0]).setY(0).normalize();
+    setWorldPose(d, run.points[0], UPV, _f);
   } else if (a.type === 'work') {                                    // 작업 발판에서 일하는 중
     d.rs = a.s + (idx - 1) * 1.4; d.u = -.12; d.lat = a.side * rnd(5.2, 5.7); wpos(d.rs, d.u, d.lat, _p); _f.copy(FR.R).multiplyScalar(a.side); setWorldPose(d, _p, FR.U, _f); d.state = 'work'; poseStand(d, .3);
   }
@@ -488,13 +507,22 @@ function spawnAt(d, a, idx = 0) {
 }
 export function spawnGroup(n = 1 + (Math.random() * 3 | 0)) {
   for (const [gi, until] of used) if (until < S.sTrain) used.delete(gi);
-  const list = anchorsIn(S.sTrain + 60, S.sTrain + 170).filter(a => !used.has(a.gi) && (a.type !== 'door' || doorLeaves.has(a.gi)));
+  const rate = Math.max(0, S.speed) / arcScale(S.sTrain);
+  const ahead = Math.max(170, Math.min(520, rate * 18));
+  const list = anchorsIn(S.sTrain + 60, S.sTrain + ahead).filter(a => {
+    if (used.has(a.gi)) return false;
+    const gap = a.s - S.sTrain;
+    if (a.type !== 'stairs') return gap <= 170 && (a.type !== 'door' || doorLeaves.has(a.gi));
+    const flight = a.bot ? Math.hypot(a.bot.lat - a.bot.top, a.bot.u) : 8;
+    return gap >= rate * (flight + (a.bot ? 10 : 2)) / 6.5;
+  });
   for (let i = list.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [list[i], list[j]] = [list[j], list[i]]; }
   let made = 0;
   let groups = 0;
   for (const a of list) {
     if (groups >= n) break; groups++;
-    for (let i = 0; i < (a.n || 1); i++) { const d = pool.find(x => !x.alive); if (!d) return made; spawnAt(d, a, i); made++; }
+    const count = Math.min(a.n || 1, pool.filter(d => !d.alive).length);
+    for (let i = 0; i < count; i++) { const d = pool.find(x => !x.alive); if (!d) return made; spawnAt(d, a, i, count); made++; }
   }
   return made;
 }
@@ -508,14 +536,61 @@ function moveWorld(d, dt, yaw) {
   if (yaw === undefined) _f.copy(FR.T).multiplyScalar(-1); else _f.copy(FR.T).multiplyScalar(Math.cos(yaw)).addScaledVector(FR.R, Math.sin(yaw)).multiplyScalar(yaw === undefined ? -1 : 1);
   if (up < 0) setWorldPose(d, _p, _r.copy(FR.U).multiplyScalar(-1), _f); else setWorldPose(d, _p, FR.U, _f);
 }
-function advancePath(d, dist) {
-  while (dist > 0 && d.pi < d.path.length - 1) {
-    const tg = d.path[d.pi + 1], L = Math.hypot(tg[0] - d.rs, tg[1] - d.u, tg[2] - d.lat);
-    if (L <= dist) { d.rs = tg[0]; d.u = tg[1]; d.lat = tg[2]; d.pi++; dist -= L; }
-    else { const k = dist / L; d.rs += (tg[0] - d.rs) * k; d.u += (tg[1] - d.u) * k; d.lat += (tg[2] - d.lat) * k; dist = 0; }
+const stairFace = new THREE.Vector3();
+function tumbleFromStairs(d, rail) {
+  frameAt(d.stairs.points[3].x, FR);
+  const run = d.stairs;
+  if (rail) {
+    _imp.copy(FR.R).multiplyScalar(-d.side * 4.8).addScaledVector(FR.U, .55);
+  } else {
+    // Across the unguarded side of the landing, clear of the adjoining stair.
+    _imp.copy(FR.T).multiplyScalar(run.points[2].x < run.points[3].x ? 4.2 : -4.2)
+      .addScaledVector(FR.R, d.side * 1.6).addScaledVector(FR.U, 1.75);
   }
-  if (d.pi >= d.path.length - 1) d.pi = d.path.length - 2;
+  snd(d, 'scrape', 1.1);
+  startRag(d, _imp, 3.5);
+  d.wheelRisk = rail;
 }
+
+function stepStairs(d, dt) {
+  const run = d.stairs, lip = run.points[3];
+  const gap = lip.x - S.sTrain - d.targetX;
+  const distance = advanceRun(run, gap, Math.max(0, S.speed) / arcScale(S.sTrain), dt);
+  if (!run.started) {
+    poseStand(d, .25);
+    d.P.sd.x = .2 * Math.sin(d.t + d.phase);
+    d.P.hand[d.limp].y += .16 * Math.sin(2*d.t + d.phase);
+    return;
+  }
+  const stride = run.stride;
+  sampleRun(run, run.distance, _p);
+  sampleRun(run, run.distance + .15, stairFace).sub(_p).setY(0);
+  if (stairFace.lengthSq() < .00001) stairFace.subVectors(lip, run.points[2]).setY(0);
+  setWorldPose(d, _p, UPV, stairFace.normalize());
+  poseStairRun(d);
+  if (Math.floor((run.distance-distance)/stride + run.phase) < Math.floor(run.distance/stride + run.phase)) snd(d, 'step', .75);
+
+  if (run.mishap === 'shove' && run.distance >= run.ends[2] && run.distance < run.length) {
+    const other = pool.find(o => o !== d && o.alive && o.state === 'stairs' && o.a.gi === d.a.gi &&
+      o.stairs.started && o.g.position.distanceToSquared(d.g.position) < 1.15 ** 2);
+    if (other) {
+      other.QV.hand[other.limp].z += 2.6; other.rollTo = .48;
+      tumbleFromStairs(d, false); return;
+    }
+  }
+  if (run.distance < run.length) return;
+  d.a.s = lip.x;
+  frameAt(lip.x, FR);
+  d.fr.T.copy(FR.T); d.fr.U.copy(FR.U); d.fr.R.copy(FR.R);
+  const x = lip.x - S.sTrain;
+  if (x < -TRAIN_BACK || x > driveCar.x1 || S.speed > CFG.latchMaxSpeed ||
+      run.mishap === 'short') {
+    tumbleFromStairs(d, true); return;
+  }
+  const duration = .39;
+  startLeap(d, duration, .88, x - S.speed * duration / arcScale(lip.x));
+}
+
 /** 달리기 (월드, 발 디딤 없이): 상체는 질주 자세, 다리는 크게 */
 function poseRun(d) {
   poseLurch(d, -1, true); const s = Math.sin(d.gait), c = Math.cos(d.gait);
@@ -568,7 +643,7 @@ function step(d, dt, targets) {
   const speed = Math.abs(S.speed), X = d.a.s - S.sTrain;
   if (!d.eyeOn && X < d.wake && d.state !== 'inside' && d.state !== 'knock') { d.eyeOn = true; d.eyeT = .5; snd(d, 'wake', .9); }
   if (d.eyeOn) { d.eyeT -= dt; const on = d.eyeT <= 0 || Math.sin(d.eyeT * 60) > 0; d.eye.material = on ? eyeOnMat : eyeMat; d.glow.visible = on && d.eyeT < 50; }
-  if (HIDDEN.includes(d.state) && (X < -TRAIN_BACK - 45 || X > 260)) { d.alive = false; d.g.visible = false; return; }
+  if (HIDDEN.includes(d.state) && (X < -TRAIN_BACK - 45 || X > (d.state === 'stairs' ? 540 : 260))) { d.alive = false; d.g.visible = false; return; }
   // 경련: 예고 없이 잠깐 굳으며 한쪽 팔이 튐
   d.freeze -= dt;
   if (d.freeze <= 0 && Math.random() < dt * .18 && ['walk', 'lurk', 'ceil', 'under', 'rise', 'perch', 'work'].includes(d.state)) {
@@ -655,16 +730,7 @@ function step(d, dt, targets) {
       if (X <= d.targetX + 4.5 && X > -TRAIN_BACK) { if (!d.prepT) { d.prepT = .35; snd(d, 'servo', 1.2); } d.prepT -= dt; d.P.H.y -= .2; if (d.prepT <= 0) { d.prepT = 0; startDrop(d); if (d.state === 'drop') d.dur = .95; } }
       break;
     }
-    case 'stairs': {                                         // 계단을 우르르 뛰어 올라와 층계참 끝에서 웅크림
-      if (!d.go && X - 8 > ((d.plen - d.done) / 5.2 + d.wait + .5) * Math.max(Math.abs(S.speed), 13)) { poseStand(d, .35); const hm = Math.max(0, Math.sin(d.t * 4.3 + d.phase)); d.P.hand[1].set(-.25, .8 + hm * .45, .45); d.P.sd.z = .9; moveWorld(d, 0, d.side * Math.PI / 2); break; }   // 아래 작업장에서 일하는 중
-      d.go = true; d.wait -= dt; if (d.wait > 0) { poseStand(d, .3); moveWorld(d, 0); break; }
-      const tgt = d.path[Math.min(d.pi + 1, d.path.length - 1)], ds = tgt[0] - d.rs, du = tgt[1] - d.u, dl = tgt[2] - d.lat, L = Math.hypot(ds, du, dl), v = 5.2 * dt;
-      if (L <= v) { d.rs = tgt[0]; d.u = tgt[1]; d.lat = tgt[2]; d.pi++; } else { d.rs += ds / L * v; d.u += du / L * v; d.lat += dl / L * v; }
-      d.gait += v / .9 * Math.PI; moveWorld(d, dt, Math.atan2(dl, ds)); poseRun(d);
-      if (Math.random() < dt * 3) snd(d, 'step', .8);
-      if (d.pi >= d.path.length - 1) { d.a.s = d.rs; d.home = d.g.position.clone(); d.fr = { T: FR.T.clone(), U: FR.U.clone(), R: FR.R.clone() }; _f.copy(FR.R).multiplyScalar(-d.side); setWorldPose(d, d.g.position, FR.U, _f); setState(d, 'lurk'); }
-      break;
-    }
+    case 'stairs': stepStairs(d, dt); break;
     case 'work': {                                           // 콘솔 앞에서 뭔가를 두드림 → 열차를 알아챔
       poseStand(d, .35); const hm = Math.max(0, Math.sin(d.t * 5 + d.phase)); d.P.hand[1].set(-.25, .9 + hm * .4, .45); d.P.hand[0].set(.3, .7, .4); d.P.sd.z = .9;
       if (hm > .98 && Math.random() < .3) snd(d, 'knock', .35);
@@ -716,6 +782,7 @@ function step(d, dt, targets) {
     case 'walk': case 'windup': case 'twitch': case 'sprint': stepWalk(d, dt, targets); break;
   }
   else place(d);
+  if (d.state === 'rag') return;
   if (d.state !== 'leap' && !HIDDEN.includes(d.state) && d.state !== 'drop') place(d);
   if (d.slipT > 0) { d.lock[d.slipI] = false; v3(d.P.hand[d.slipI], (d.slipI ? -1 : 1) * .55, d.P.H.y + .3, -.5); }        // 맞은 팔: 잠깐 놓쳤다 다시 잡음
   if (d.kneel > 0 && (d.state === 'walk' || d.state === 'windup')) d.P.H.y -= .35 * Math.min(1, d.kneel * 2);               // 다리 맞음: 주저앉았다 일어남
@@ -818,8 +885,8 @@ function clampOnTrain(d, p) {
 }
 
 /** 숨을 자리 → 지나가는 차량의 부품으로 뛰어 붙음 */
-function startLeap(d, dur, arc) {
-  const X = d.a.s - S.sTrain, car = carForTrainX(X), lx = X + car.off, s = d.side;
+function startLeap(d, dur, arc, X = d.a.s - S.sTrain) {
+  const car = carForTrainX(X), lx = X + car.off, s = d.side;
   const kinds = car === powerCar ? ['rail'] : Math.random() < .7 ? ['bar', 'gutter'] : ['gutter', 'bar'];
   const pick = pickGrip(d, car, lx, s, kinds) || pickGrip(d, car, lx, s, ['rail', 'bar', 'gutter']);
   if (!pick) { startRag(d, _imp.copy(d.fr.R).multiplyScalar(-s * 3), 3); return; }
@@ -1088,7 +1155,7 @@ export function kickAndroid(origin, dir, range) {
   }
   return true;
 }
-export function __spawnAt(a) { const d = pool.find(x => !x.alive); if (d) spawnAt(d, a); return d; }
+export function __spawnAt(a, idx = 0) { const d = pool.find(x => !x.alive); if (d) spawnAt(d, a, idx); return d; }
 /* 시험용: 열차 부품에 바로 매달린 상태로 */
 export function __hangOn(car, kind, x, s) {
   const d = pool.find(o => !o.alive); if (!d) return null;
